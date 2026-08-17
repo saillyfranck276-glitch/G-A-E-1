@@ -33,19 +33,14 @@ class FacturationAndroidApp:
         self.page.window_min_width = 900
         self.page.window_min_height = 600
         
-        # 🟢 CRUCIAL POUR LE RESPONSIVE : On désactive le scroll global de la page
         self.page.scroll = None
 
-        # ----------------------------------------------------
         # Dossier des données
-        # ----------------------------------------------------
         self.data_dir = Path(__file__).parent / "data"
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.database = self.data_dir / "database.json"
 
-        # ----------------------------------------------------
         # États et Données globales
-        # ----------------------------------------------------
         self.devis = []
         self.factures = []
         self.clients = []
@@ -68,19 +63,14 @@ class FacturationAndroidApp:
             "accent_color": "#2B719E",
         }
 
-        # Chargement initial de la base de données
         self.load_data()
 
-        # Zone centrale d'affichage de droite
         self.content_area = ft.Container(
             expand=True,
             padding=20,
         )
 
-        # Initialisation complète de l'interface
         self.setup_layout()
-
-        # Navigation automatique vers la vue par défaut au démarrage
         self.navigate_to("Dashboard")
 
     def load_data(self):
@@ -176,7 +166,6 @@ class FacturationAndroidApp:
             ),
         )
 
-        # 🟢 FIX 1 : On ajoute d'abord les composants à la page avant d'appeler refresh_sidebar()
         self.page.add(
             ft.Row(
                 controls=[
@@ -188,7 +177,6 @@ class FacturationAndroidApp:
             )
         )
 
-        # Génération initiale de la liste des boutons
         self.refresh_sidebar()
 
     def refresh_sidebar(self):
@@ -230,7 +218,6 @@ class FacturationAndroidApp:
 
         self.menu_column.controls = self.menu_buttons
         
-        # 🟢 FIX 2 : Bloc try/except sécurisé au lieu de tester `.page` qui faisait planter Flet
         try:
             self.menu_column.update()
         except Exception:
@@ -304,12 +291,12 @@ class FacturationAndroidApp:
             else:
                 self.content_area.content = ft.Container(
                     expand=True,
-                    alignment=ft.alignment.center,
+                    alignment=ft.Alignment(0, 0),
                     content=ft.Column(
                         alignment=ft.MainAxisAlignment.CENTER,
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[
-                            ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, size=80, color="orange"),
+                            ft.Icon("warning_amber_rounded", size=80, color="orange"),
                             ft.Text(f"Vue '{view_name}' introuvable.", size=24, weight=ft.FontWeight.BOLD),
                         ],
                     ),
@@ -317,12 +304,12 @@ class FacturationAndroidApp:
         except Exception as e:
             self.content_area.content = ft.Container(
                 expand=True,
-                alignment=ft.alignment.center,
+                alignment=ft.Alignment(0, 0),
                 content=ft.Column(
                     alignment=ft.MainAxisAlignment.CENTER,
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[
-                        ft.Icon(ft.Icons.ERROR_OUTLINE, color="red", size=80),
+                        ft.Icon("error_outline", color="red", size=80),
                         ft.Text("Erreur lors du chargement de la vue", size=22, weight=ft.FontWeight.BOLD),
                         ft.Text(str(e), selectable=True, color="red"),
                     ],
