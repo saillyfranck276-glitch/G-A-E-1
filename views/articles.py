@@ -1,257 +1,349 @@
 import flet as ft
 
-CARD_COLOR = "#1E1E22"
-PRIMARY_COLOR = "#2B719E"
-ERROR_COLOR = "#EF4444"
+
+def get_icon(name: str):
+  """Assistant universel d'icônes compatible Android et Desktop."""
+  name_upper = name.upper()
+  if hasattr(ft, "Icons") and hasattr(ft.Icons, name_upper):
+    return getattr(ft.Icons, name_upper)
+  if hasattr(ft, "icons") and hasattr(ft.icons, name_upper):
+    return getattr(ft.icons, name_upper)
+  return name.lower()
+
+
+def safe_border(width=1, color="grey800"):
+  """Bordure universelle pour éviter 'ft.border.all' sur APK Android."""
+  side = ft.BorderSide(width, color)
+  return ft.Border(top=side, right=side, bottom=side, left=side)
+
 
 class ArticlesView(ft.Container):
-    """Vue Flet pour la gestion des articles (100% Mobile & Desktop)."""
 
-    def __init__(self, app):
-        super().__init__()
-        self.app = app
-        self.expand = True
-        self.padding = 10
-        
-        # État interne
-        self.editing_idx = None
-        self.tva_applicable = self.detecter_statut_tva()
-        
-        # Source de données centralisée
-        if not hasattr(self.app, "articles"):
-            self.app.articles = []
+  def __init__(self, app):
+    super().__init__(expand=True)
+    self.app = app
 
-        self.main_layout = ft.Container(expand=True)
-        self._build_interface()
+    # Couleurs de thème de l'entreprise
+    self.entreprise_data = getattr(
+        self.app, "entreprise", getattr(self.app, "association", {})
+    )
+    self.accent_color = self.entreprise_data.get("accent_color", "#2B719E")
 
-    def detecter_statut_tva(self):
-        """Vérifie si la TVA est activée dans la configuration entreprise."""
-        if hasattr(self.app, "entreprise") and isinstance(self.app.entreprise, dict):
-            tva = self.app.entreprise.get("tva_activee", False)
-            if isinstance(tva, bool):
-                return tva
-            return str(tva).lower() in ["true", "1", "oui"]
-        return False
+    # Champ de recherche et bouton d'ajout
+    self.search_input = ft.TextField(
+        hint_text="Rechercher par désignation ou référence...",
+        prefix_icon=get_icon("SEARCH"),
+        on_change=self.on_search_change,
+        expand=True,
+    )
 
-    def did_mount(self):
-        """Détecte le redimensionnement et charge la liste au montage."""
-        if self.page:
-            self.page.on_resized = self._on_screen_resize
-        self.refresh_list()
+    self.btn_add = ft.ElevatedButton(
+        "Nouveau Produit / Article",
+        icon=get_icon("ADD"),
+        bgcolor=self.accent_color,
+        color="white",
+        on_click=lambda e: self.ouvrir_dialogue_article(),
+    )
 
-    def _is_mobile(self):
-        return self.page.width < 768 if self.page else False
+    # Conteneur scrollable de la liste d'articles
+    self.list_container = ft.Column(spacing=10, scroll="auto", expand=True)
 
-    def _on_screen_resize(self, e):
-        self.refresh_list()
-
-    def _build_interface(self):
-        # Champs du formulaire
-        self.fields = {
-            "ref": ft.TextField(label="Référence / SKU", bgcolor="#242426", text_size=13),
-            "designation": ft.TextField(label="Désignation *", bgcolor="#242426", text_size=13),
-            "categorie": ft.TextField(label="Catégorie", bgcolor="#242426", text_size=13),
-            "prix_ht": ft.TextField(label="Prix Unitaire HT (€)", bgcolor="#242426", text_size=13),
-            "stock": ft.TextField(label="Stock", bgcolor="#242426", text_size=13)
-        }
-        
-        self.tf_tva = ft.TextField(
-            label="Taux TVA (%)", 
-            value="20" if self.tva_applicable else "0", 
-            bgcolor="#242426", 
-            disabled=not self.tva_applicable,
-            text_size=13
-        )
-        
-        self.form_title = ft.Text("➕ Ajouter un article", size=16, weight=ft.FontWeight.BOLD)
-
-        self.btn_save = ft.ElevatedButton(
-            "💾 Enregistrer", 
-            on_click=self.valider_article, 
-            bgcolor=PRIMARY_COLOR, 
-            color="white"
-        )
-        
-        self.btn_reset = ft.OutlinedButton(
-            "❌ Annuler", 
-            on_click=lambda e: self.vider_champs(),
-            style=ft.ButtonStyle(color="white")
-        )
-
-        # Barre de recherche
-        self.search_entry = ft.TextField(
-            hint_text="🔍 Rechercher (désignation, réf, catégorie)...", 
-            on_change=lambda _: self.refresh_list(), 
-            bgcolor="#1A1A1C",
-            text_size=13,
-            expand=True
-        )
-        
-        self.list_container = ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, spacing=10)
-
-        # Structure principale
-        header = ft.Row([
-            ft.IconButton("arrow_back_rounded", on_click=lambda e: self.app.navigate_to("Dashboard")),
-            ft.Text("📦 Gestion des Articles", size=20, weight=ft.FontWeight.BOLD)
-        ])
-
-        self.content = ft.Column(
-            controls=[header, self.main_layout],
+    self.content = ft.Container(
+        padding=15,
+        content=ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Text(
+                            "📦 Gestion des Articles & Stock",
+                            size=18,
+                            weight="bold",
+                            expand=True,
+                        ),
+                        self.btn_add,
+                    ],
+                    alignment="spaceBetween",
+                ),
+                ft.Row([self.search_input]),
+                ft.Divider(color="grey800"),
+                self.list_container,
+            ],
+            spacing=12,
             expand=True,
-            spacing=10
+        ),
+    )
+
+  def safe_update(self):
+    """Mise à jour sécurisée de l'UI."""
+    try:
+      if self.page:
+        self.update()
+    except Exception:
+      pass
+
+  def did_mount(self):
+    """Initialisation au chargement de la vue."""
+    self.refresh_list()
+
+  def refresh_list(self, filter_text=""):
+    """Rafraîchit la liste des articles affichés."""
+    self.list_container.controls.clear()
+    articles = getattr(self.app, "articles", [])
+
+    query = filter_text.lower().strip()
+
+    filtered_articles = [
+        a
+        for a in articles
+        if query in a.get("designation", "").lower()
+        or query in a.get("reference", "").lower()
+        or query in a.get("categorie", "").lower()
+    ]
+
+    if not filtered_articles:
+      self.list_container.controls.append(
+          ft.Container(
+              padding=20,
+              alignment=ft.alignment.center,
+              content=ft.Text(
+                  "Aucun article disponible.", color="grey400", italic=True
+              ),
+          )
+      )
+      self.safe_update()
+      return
+
+    for article in filtered_articles:
+      card = self._build_article_card(article)
+      self.list_container.controls.append(card)
+
+    self.safe_update()
+
+  def _build_article_card(self, article):
+    """Construit une carte d'article compatible Android (sans ft.border.all)."""
+    ref = article.get("reference", "N/A")
+    designation = article.get("designation", "Sans nom")
+    categorie = article.get("categorie", "Général")
+    prix_ht = article.get("prix_ht", 0.0)
+    prix_ttc = article.get("prix_ttc", round(prix_ht * 1.2, 2))
+    stock = article.get("stock", 0)
+
+    stock_color = (
+        "green400" if stock > 5 else ("orange400" if stock > 0 else "red400")
+    )
+
+    return ft.Container(
+        padding=12,
+        bgcolor="#1e293b",
+        border_radius=8,
+        border=safe_border(1, "grey800"),  # ✅ Compatible Android
+        content=ft.Row(
+            [
+                ft.Column(
+                    [
+                        ft.Text(f"{designation}", weight="bold", size=15),
+                        ft.Text(
+                            f"Réf: {ref} | Catégorie: {categorie}",
+                            size=12,
+                            color="grey400",
+                        ),
+                    ],
+                    expand=True,
+                    spacing=4,
+                ),
+                ft.Column(
+                    [
+                        ft.Text(
+                            f"{prix_ttc:.2f} € TTC",
+                            weight="bold",
+                            size=14,
+                            color="#93C5FD",
+                        ),
+                        ft.Text(f"({prix_ht:.2f} € HT)", size=11, color="grey400"),
+                    ],
+                    alignment="center",
+                    horizontal_alignment="end",
+                    spacing=2,
+                ),
+                ft.Container(
+                    padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                    bgcolor="#0f172a",
+                    border_radius=6,
+                    content=ft.Text(
+                        f"Stock: {stock}",
+                        size=12,
+                        weight="bold",
+                        color=stock_color,
+                    ),
+                ),
+                ft.Row(
+                    [
+                        ft.IconButton(
+                            icon=get_icon("EDIT"),
+                            icon_size=18,
+                            tooltip="Modifier",
+                            on_click=lambda e,
+                            a=article: self.ouvrir_dialogue_article(a),
+                        ),
+                        ft.IconButton(
+                            icon=get_icon("DELETE"),
+                            icon_size=18,
+                            icon_color="red400",
+                            tooltip="Supprimer",
+                            on_click=lambda e,
+                            a=article: self.supprimer_article(a),
+                        ),
+                    ],
+                    spacing=0,
+                ),
+            ],
+            alignment="spaceBetween",
+            vertical_alignment="center",
+        ),
+    )
+
+  def on_search_change(self, e):
+    self.refresh_list(self.search_input.value or "")
+
+  def ouvrir_dialogue_article(self, article=None):
+    is_edit = article is not None
+
+    ref_field = ft.TextField(
+        label="Référence",
+        value=article.get("reference", "") if is_edit else "",
+        col={"sm": 12, "md": 6},
+    )
+    des_field = ft.TextField(
+        label="Désignation",
+        value=article.get("designation", "") if is_edit else "",
+        col={"sm": 12, "md": 6},
+    )
+    cat_field = ft.TextField(
+        label="Catégorie",
+        value=article.get("categorie", "Général") if is_edit else "Général",
+        col={"sm": 12, "md": 6},
+    )
+    ht_field = ft.TextField(
+        label="Prix HT (€)",
+        value=str(article.get("prix_ht", "")) if is_edit else "0.0",
+        keyboard_type="number",
+        col={"sm": 6, "md": 3},
+    )
+    stock_field = ft.TextField(
+        label="Stock actuel",
+        value=str(article.get("stock", "")) if is_edit else "0",
+        keyboard_type="number",
+        col={"sm": 6, "md": 3},
+    )
+
+    def enregistrer(e):
+      try:
+        p_ht = float((ht_field.value or "0").replace(",", "."))
+        stk = int(stock_field.value or "0")
+      except ValueError:
+        self._show_snackbar(
+            "Prix et stock doivent être des nombres valides.", is_error=True
         )
+        return
 
-    def refresh_list(self, e=None):
-        """Regénère dynamiquement la liste et la disposition responsive."""
-        self.list_container.controls.clear()
-        search = self.search_entry.value.lower().strip() if self.search_entry.value else ""
-        
-        for idx, art in enumerate(getattr(self.app, "articles", [])):
-            designation = str(art.get("designation", ""))
-            ref = str(art.get("ref", ""))
-            cat = str(art.get("categorie", ""))
-            
-            if search and not (search in designation.lower() or search in ref.lower() or search in cat.lower()):
-                continue
-                
-            card = ft.Container(
-                content=ft.Row([
-                    ft.Column([
-                        ft.Text(designation or "Sans nom", weight=ft.FontWeight.BOLD, color="#38BDF8", size=14),
-                        ft.Text(f"Réf: {ref or 'N/A'} | Cat: {cat or 'N/A'}", size=12, color="#AEAEB2"),
-                        ft.Text(f"Prix HT: {float(art.get('prix_ht', 0)):.2f}€ | TVA: {art.get('tva', 0)}% | Stock: {art.get('stock', 0)}", size=12, color="#E5E7EB")
-                    ], expand=True, spacing=3),
-                    ft.Row([
-                        ft.IconButton(ft.Icons.EDIT, icon_size=18, on_click=lambda e, i=idx, a=art: self.charger_article(i, a)),
-                        ft.IconButton(ft.Icons.DELETE, icon_size=18, on_click=lambda e, i=idx: self.supprimer_article(i), icon_color=ERROR_COLOR)
-                    ], spacing=0)
-                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                bgcolor=CARD_COLOR,
-                padding=12,
-                border_radius=8,
-                border=ft.border.all(1, "#2A2A32")
-            )
-            self.list_container.controls.append(card)
-
-        if not self.list_container.controls:
-            self.list_container.controls.append(
-                ft.Text("Aucun article trouvé.", color="#AEAEB2", size=13)
-            )
-
-        # Construction des conteneurs Réactifs
-        form_card = ft.Container(
-            content=ft.Column(
-                controls=[
-                    self.form_title,
-                    *[f for f in self.fields.values()],
-                    self.tf_tva,
-                    ft.Row([self.btn_save, self.btn_reset], spacing=10)
-                ],
-                spacing=8,
-                scroll=ft.ScrollMode.AUTO
-            ),
-            bgcolor=CARD_COLOR,
-            padding=15,
-            border_radius=12,
-            border=ft.border.all(1, "#2A2A32")
+      if not des_field.value.strip():
+        self._show_snackbar(
+            "La désignation est obligatoire.", is_error=True
         )
+        return
 
-        list_card = ft.Container(
-            content=ft.Column([
-                ft.Row([self.search_entry]),
-                self.list_container
-            ], expand=True, spacing=10),
-            expand=True
-        )
+      if not hasattr(self.app, "articles"):
+        self.app.articles = []
 
-        # Disposition conditionnelle selon la taille de l'écran
-        if self._is_mobile():
-            self.main_layout.content = ft.Column(
-                controls=[form_card, list_card],
-                expand=True,
-                scroll=ft.ScrollMode.AUTO,
-                spacing=15
-            )
-        else:
-            form_card.width = 340
-            self.main_layout.content = ft.Row(
-                controls=[form_card, list_card],
-                vertical_alignment=ft.CrossAxisAlignment.START,
-                expand=True,
-                spacing=15
-            )
+      if is_edit:
+        article["reference"] = ref_field.value.strip()
+        article["designation"] = des_field.value.strip()
+        article["categorie"] = cat_field.value.strip()
+        article["prix_ht"] = p_ht
+        article["prix_ttc"] = round(p_ht * 1.2, 2)
+        article["stock"] = stk
+      else:
+        nouvel_article = {
+            "id": len(self.app.articles) + 1,
+            "reference": ref_field.value.strip(),
+            "designation": des_field.value.strip(),
+            "categorie": cat_field.value.strip(),
+            "prix_ht": p_ht,
+            "prix_ttc": round(p_ht * 1.2, 2),
+            "stock": stk,
+        }
+        self.app.articles.append(nouvel_article)
 
-        if self.page:
-            self.update()
+      if hasattr(self.app, "save_data"):
+        self.app.save_data()
 
-    def charger_article(self, idx, article):
-        """Passe en mode édition et remplit le formulaire."""
-        self.editing_idx = idx
-        self.form_title.value = f"✏️ Modifier l'article #{idx + 1}"
-        for key, field in self.fields.items():
-            field.value = str(article.get(key, ""))
-        self.tf_tva.value = str(article.get("tva", "20" if self.tva_applicable else "0"))
-        self.refresh_list()
+      self._fermer_dialogue(dlg)
+      self.refresh_list(self.search_input.value or "")
+      self._show_snackbar("Article enregistré avec succès !")
 
-    def vider_champs(self):
-        """Réinitialise le formulaire."""
-        self.editing_idx = None
-        self.form_title.value = "➕ Ajouter un article"
-        for field in self.fields.values(): 
-            field.value = ""
-        self.tf_tva.value = "20" if self.tva_applicable else "0"
-        self.refresh_list()
+    dlg = ft.AlertDialog(
+        title=ft.Text("Modifier l'article" if is_edit else "Nouvel Article"),
+        content=ft.Container(
+            width=500,
+            content=ft.ResponsiveRow([
+                ref_field,
+                des_field,
+                cat_field,
+                ht_field,
+                stock_field,
+            ]),
+        ),
+        actions=[
+          ft.TextButton(
+              "Annuler", on_click=lambda e: self._fermer_dialogue(dlg)
+          ),
+          ft.ElevatedButton(
+              "Enregistrer",
+              bgcolor=self.accent_color,
+              color="white",
+              on_click=enregistrer,
+          ),
+      ],
+        actions_alignment="end",
+    )
 
-    def valider_article(self, e):
-        """Valide et enregistre un article."""
-        if not self.fields["designation"].value or not self.fields["designation"].value.strip():
-            self.show_snack("La désignation est obligatoire.", is_error=True)
-            return
+    page_obj = getattr(self.app, "page", None) or self.page
+    if page_obj:
+      if hasattr(page_obj, "open"):
+        page_obj.open(dlg)
+      else:
+        page_obj.dialog = dlg
+        dlg.open = True
+        page_obj.update()
 
+  def _fermer_dialogue(self, dlg):
+    page_obj = getattr(self.app, "page", None) or self.page
+    if page_obj and hasattr(page_obj, "close"):
+      page_obj.close(dlg)
+    else:
+      dlg.open = False
+    self.safe_update()
+
+  def supprimer_article(self, article):
+    if hasattr(self.app, "articles") and article in self.app.articles:
+      self.app.articles.remove(article)
+      if hasattr(self.app, "save_data"):
+        self.app.save_data()
+      self.refresh_list(self.search_input.value or "")
+      self._show_snackbar("Article supprimé.")
+
+  def _show_snackbar(self, message: str, is_error: bool = False):
+    color = "red700" if is_error else "green700"
+    page_obj = getattr(self.app, "page", None) or self.page
+    if page_obj:
+      snack = ft.SnackBar(ft.Text(message), bgcolor=color)
+      if hasattr(page_obj, "open"):
         try:
-            raw_prix = self.fields["prix_ht"].value or "0"
-            raw_tva = self.tf_tva.value or "0"
-            raw_stock = self.fields["stock"].value or "0"
-
-            prix_ht = float(raw_prix.replace(",", "."))
-            tva = float(raw_tva.replace(",", ".")) if self.tva_applicable else 0.0
-            stock = int(raw_stock)
-        except (ValueError, AttributeError, TypeError):
-            self.show_snack("Erreur : Vérifiez les valeurs numériques (Prix, Stock, TVA).", is_error=True)
-            return
-
-        data = {k: f.value.strip() for k, f in self.fields.items()}
-        data["prix_ht"] = prix_ht
-        data["tva"] = tva
-        data["stock"] = stock
-
-        if self.editing_idx is not None:
-            self.app.articles[self.editing_idx].update(data)
-            self.show_snack("Article mis à jour avec succès !")
-        else:
-            self.app.articles.append(data)
-            self.show_snack("Article ajouté avec succès !")
-            
-        if hasattr(self.app, "save_data"):
-            self.app.save_data()
-            
-        self.vider_champs()
-
-    def supprimer_article(self, idx):
-        """Supprime l'article sélectionné."""
-        if 0 <= idx < len(self.app.articles):
-            self.app.articles.pop(idx)
-            if hasattr(self.app, "save_data"):
-                self.app.save_data()
-            self.show_snack("Article supprimé.")
-            self.refresh_list()
-
-    def show_snack(self, message, is_error=False):
-        """Affiche une notification en bas d'écran."""
-        if self.page:
-            self.page.snack_bar = ft.SnackBar(
-                content=ft.Text(message), 
-                bgcolor=ERROR_COLOR if is_error else "green"
-            )
-            self.page.snack_bar.open = True
-            self.page.update()
+          page_obj.open(snack)
+        except Exception:
+          page_obj.snack_bar = snack
+          snack.open = True
+      else:
+        page_obj.snack_bar = snack
+        snack.open = True
+      self.safe_update()
