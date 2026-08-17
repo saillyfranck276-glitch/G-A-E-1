@@ -58,47 +58,64 @@ class NumberedCanvas(canvas.Canvas):
 
 
 class FacturationView(ft.Container):
-    """Vue Flet pour la gestion des devis et factures."""
+    """Vue Flet pour la gestion des devis et factures (100% Mobile & Desktop)."""
 
     def __init__(self, app):
         super().__init__()
         self.app = app
         self.expand = True
-        self.padding = 15
-        self.accent_color = self.app.entreprise.get("accent_color", "#2B719E")
+        self.padding = 10
+        self.accent_color = "#2B719E"
+        
+        if hasattr(self.app, "entreprise") and isinstance(self.app.entreprise, dict):
+            self.accent_color = self.app.entreprise.get("accent_color", "#2B719E")
         
         self.documents = {}  
         self.selected_doc_key = None  
 
         self.csv_picker = ft.FilePicker(on_result=self._on_csv_export_result)
+        
+        # Conteneur dynamique d'affichage (Tableau ou cartes)
+        self.display_container = ft.Container(expand=True)
 
         self._build_interface()
-        self._refresh_table()
 
     def did_mount(self):
-        if self.csv_picker not in self.app.page.overlay:
-            self.app.page.overlay.append(self.csv_picker)
-        self.app.page.update()
+        if self.page:
+            if self.csv_picker not in self.page.overlay:
+                self.page.overlay.append(self.csv_picker)
+            self.page.on_resized = self._on_screen_resize
+            self._refresh_table()
+
+    def _on_screen_resize(self, e):
+        self._refresh_table()
+
+    def _is_mobile(self):
+        return self.page.width < 768 if self.page else False
 
     def _build_interface(self):
         header = ft.Row(
             controls=[
-                ft.IconButton(ft.icons.ARROW_BACK_ROUNDED, on_click=lambda e: self.app.navigate_to("Dashboard")),
-                ft.Text("📂 Gestion des Documents", size=24, weight=ft.FontWeight.BOLD),
+                ft.IconButton("arrow_back_rounded", on_click=lambda e: self.app.navigate_to("Dashboard")),
+                ft.Text("📂 Factures & Devis", size=20, weight=ft.FontWeight.BOLD),
             ],
             alignment=ft.MainAxisAlignment.START,
         )
 
-        toolbar = ft.Row(
+        toolbar = ft.ResponsiveRow(
             controls=[
-                ft.ElevatedButton("➕ Nouveau Devis", bgcolor=self.accent_color, color=ft.colors.WHITE, on_click=lambda e: self.app.navigate_to("NouveauDevis")),
-                ft.ElevatedButton("➕ Nouvelle Facture", bgcolor=self.accent_color, color=ft.colors.WHITE, on_click=lambda e: self.app.navigate_to("NouvelleFacture")),
+                ft.Column([
+                    ft.ElevatedButton("➕ Nouveau Devis", bgcolor=self.accent_color, color="white", on_click=lambda e: self.app.navigate_to("NouveauDevis"))
+                ], col={"sm": 6, "md": 3}),
+                ft.Column([
+                    ft.ElevatedButton("➕ Nouvelle Facture", bgcolor=self.accent_color, color="white", on_click=lambda e: self.app.navigate_to("NouvelleFacture"))
+                ], col={"sm": 6, "md": 3}),
             ],
             spacing=10
         )
 
         self.search_entry = ft.TextField(
-            label="🔍 Filtrer (Double-cliquez pour générer et ouvrir directement le PDF)",
+            label="🔍 Rechercher (Numéro, client, statut...)",
             bgcolor="#1A1A1C",
             height=45,
             text_size=13,
@@ -106,6 +123,7 @@ class FacturationView(ft.Container):
             expand=True
         )
 
+        # Tableau pour ordinateurs/tablettes
         self.table = ft.DataTable(
             columns=[
                 ft.DataColumn(ft.Text("Type", weight=ft.FontWeight.BOLD)),
@@ -120,7 +138,73 @@ class FacturationView(ft.Container):
             show_checkbox_column=False,
         )
 
-        table_container = ft.Container(
+        # Grille d'actions réactive
+        def btn_grid(text, icon, color, action):
+            return ft.Column([
+                ft.ElevatedButton(
+                    content=ft.Row([ft.Icon(icon, size=16), ft.Text(text, size=12)], spacing=6, alignment=ft.MainAxisAlignment.CENTER),
+                    bgcolor=color,
+                    color="white",
+                    on_click=action,
+                    style=ft.ButtonStyle(padding=10)
+                )
+            ], col={"sm": 6, "md": 3, "lg": 3})
+
+        actions_grid = ft.ResponsiveRow(
+            controls=[
+                btn_grid("Voir PDF", "picture_as_pdf", "#2B719E", self.ouvrir_pdf_selectionne),
+                btn_grid("Générer PDF", "save_alt", "#8B5CF6", self.exporter_pdf_organise),
+                btn_grid("Modifier", "edit", "#F59E0B", self.modifier_selectionne),
+                btn_grid("Marquer Payée", "euro", "#10B981", self.marquer_payee),
+                btn_grid("URSSAF", "check_circle", "#16A34A", self.declarer_urssaf),
+                btn_grid("Convertir Devis", "transform", "#0EA5E9", self.convertir_devis_en_facture),
+                btn_grid("Export CSV", "table_chart", "#4F46E5", self.exporter_csv),
+                btn_grid("Supprimer", "delete", "#DC2626", self.supprimer_selectionne),
+            ],
+            spacing=8
+        )
+
+        self.content = ft.Column(
+            controls=[
+                header, 
+                toolbar, 
+                ft.Row([self.search_entry]), 
+                self.display_container, 
+                actions_grid
+            ],
+            spacing=12,
+            expand=True,
+            scroll=ft.ScrollMode.AUTO
+        )
+
+    def _refresh_table(self, e=None):
+        self.documents.clear()
+        self.table.rows.clear()
+        query = self.search_entry.value.strip().lower() if self.search_entry.value else ""
+
+        filtered_docs = []
+
+        for devis in getattr(self.app, "devis", []):
+            if self._match_query(devis, "devis", query):
+                filtered_docs.append((devis, "devis"))
+                
+        for facture in getattr(self.app, "factures", []):
+            if self._match_query(facture, "facture", query):
+                filtered_docs.append((facture, "facture"))
+
+        if self._is_mobile():
+            self._render_mobile_cards(filtered_docs)
+        else:
+            self._render_desktop_table(filtered_docs)
+
+        if self.page:
+            self.page.update()
+
+    def _render_desktop_table(self, docs):
+        for doc, type_doc in docs:
+            self._insert_document_row(doc, type_doc)
+
+        self.display_container.content = ft.Container(
             content=ft.Column(
                 controls=[ft.Row(controls=[self.table], scroll=ft.ScrollMode.AUTO)],
                 scroll=ft.ScrollMode.AUTO,
@@ -130,46 +214,65 @@ class FacturationView(ft.Container):
             border_radius=12,
             border=ft.border.all(1, "#2A2A2E"),
             padding=10,
+            min_height=300,
             expand=True
         )
 
-        actions_row = ft.Row(
-            controls=[
-                ft.ElevatedButton("👁️ Voir PDF", bgcolor="#2B719E", color=ft.colors.WHITE, on_click=self.ouvrir_pdf_selectionne),
-                ft.ElevatedButton("💾 Exporter PDF Classé", bgcolor="#8B5CF6", color=ft.colors.WHITE, on_click=self.exporter_pdf_organise),
-                ft.ElevatedButton("✏️ Modifier", bgcolor="#F59E0B", color=ft.colors.WHITE, on_click=self.modifier_selectionne),
-                ft.ElevatedButton("💶 Marquer Payée", bgcolor="#10B981", color=ft.colors.WHITE, on_click=self.marquer_payee),
-                ft.ElevatedButton("✅ Déclarer URSSAF", bgcolor="#16A34A", color=ft.colors.WHITE, on_click=self.declarer_urssaf),
-                ft.ElevatedButton("🔄 Convertir Devis", bgcolor="#0EA5E9", color=ft.colors.WHITE, on_click=self.convertir_devis_en_facture),
-                ft.ElevatedButton("📊 Exporter CSV", bgcolor="#4F46E5", color=ft.colors.WHITE, on_click=self.exporter_csv),
-                ft.ElevatedButton("🗑️ Supprimer", bgcolor="#DC2626", color=ft.colors.WHITE, on_click=self.supprimer_selectionne),
-            ],
-            spacing=8,
-            wrap=True
-        )
+    def _render_mobile_cards(self, docs):
+        cards_list = []
+        
+        for doc, type_doc in docs:
+            num = str(doc.get("numero", ""))
+            key = (type_doc, num)
+            self.documents[key] = doc
 
-        self.content = ft.Column(
-            controls=[header, toolbar, ft.Row([self.search_entry]), table_container, actions_row],
-            spacing=15,
+            client = doc.get("client", {})
+            nom = client.get("nom", "Inconnu") if isinstance(client, dict) else str(client)
+            statut = doc.get("statut", "-")
+            total_ttc = f"{float(doc.get('total_ttc', 0)):.2f} €"
+            is_selected = self.selected_doc_key == key
+
+            def make_select_handler(k):
+                return lambda e: self._select_card(k)
+
+            card_content = ft.Container(
+                bgcolor="#1E1E22" if not is_selected else "#2A3A4E",
+                border=ft.border.all(1.5 if is_selected else 1, self.accent_color if is_selected else "#2A2A32"),
+                border_radius=10,
+                padding=12,
+                on_click=make_select_handler(key),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Container(
+                            content=ft.Text(type_doc.upper(), size=10, weight=ft.FontWeight.BOLD, color="white"),
+                            bgcolor=self.accent_color if type_doc == "facture" else "#8B5CF6",
+                            padding=ft.padding.horizontal(8),
+                            border_radius=4
+                        ),
+                        ft.Text(num, weight=ft.FontWeight.BOLD, color="white", size=14),
+                        ft.Text(total_ttc, weight=ft.FontWeight.BOLD, color="#10B981" if type_doc == "facture" else "#2B719E", size=14)
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ft.Text(f"Client : {nom}", size=12, color="#AEAEB2"),
+                    ft.Row([
+                        ft.Text(f"Statut : {statut}", size=11, color="#34D399" if "Payée" in statut else "#F59E0B"),
+                        ft.Text(f"URSSAF : {'Oui' if doc.get('urssaf_declare') else 'Non'}", size=11, color="#AEAEB2")
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                ], spacing=6)
+            )
+            cards_list.append(card_content)
+
+        if not cards_list:
+            cards_list.append(ft.Text("Aucun document trouvé.", color="#AEAEB2", size=13))
+
+        self.display_container.content = ft.Column(
+            controls=cards_list,
+            spacing=10,
             expand=True
         )
 
-    def _refresh_table(self, e=None):
-        self.documents.clear()
-        self.table.rows.clear()
-        self.selected_doc_key = None
-        query = self.search_entry.value.strip().lower() if self.search_entry.value else ""
-
-        for devis in getattr(self.app, "devis", []):
-            if self._match_query(devis, "devis", query):
-                self._insert_document_row(devis, "devis")
-                
-        for facture in getattr(self.app, "factures", []):
-            if self._match_query(facture, "facture", query):
-                self._insert_document_row(facture, "facture")
-
-        if self.page:
-            self.page.update()
+    def _select_card(self, key):
+        self.selected_doc_key = key
+        self._refresh_table()
 
     def _match_query(self, doc, type_doc, query):
         if not query: return True
@@ -199,7 +302,8 @@ class FacturationView(ft.Container):
                 r.selected = False
             row.selected = True
             self.selected_doc_key = key
-            self.page.update()
+            if self.page:
+                self.page.update()
 
         def handle_double_tap(e):
             handle_single_tap(e)
@@ -210,8 +314,8 @@ class FacturationView(ft.Container):
                 ft.GestureDetector(
                     content=ft.Container(
                         content=ft.Text(text, color=color, weight=weight),
-                        alignment=ft.alignment.center_left,
-                        bgcolor=ft.colors.TRANSPARENT,
+                        alignment=ft.Alignment(-1, 0),
+                        bgcolor="transparent",
                         expand=True,
                     ),
                     on_tap=handle_single_tap,
@@ -231,7 +335,7 @@ class FacturationView(ft.Container):
 
     def _selected_document(self):
         if not self.selected_doc_key:
-            self.show_snack("Veuillez d'abord sélectionner un document dans le tableau.", is_error=True)
+            self.show_snack("Veuillez d'abord sélectionner un document.", is_error=True)
             return None, None
         type_doc, num_doc = self.selected_doc_key
         return type_doc, self.documents.get((type_doc, num_doc))
@@ -245,7 +349,6 @@ class FacturationView(ft.Container):
         if doc: self.exporter_pdf_direct(type_doc, doc, ouvrir_apres=False)
 
     def _trouver_chemin_valide(self, chemin_initial):
-        """Scanne les répertoires actifs pour localiser l'image (Logo ou Signature)."""
         if not chemin_initial:
             return ""
         if os.path.exists(chemin_initial):
@@ -334,7 +437,6 @@ class FacturationView(ft.Container):
 
         mentions_text = ent.get("mentions_legales", f"SIRET : {ent_siret} - Enregistré conformément à la loi.")
 
-        # Construction En-tête + Logo alternatif
         txt_entreprise = f"<b>{ent_nom}</b><br/>{ent_bloc_adresse}<br/>"
         if ent_tel: txt_entreprise += f"Tel: {ent_tel}<br/>"
         if ent_email: txt_entreprise += f"Email: {ent_email}<br/>"
@@ -360,10 +462,8 @@ class FacturationView(ft.Container):
         story.append(header_table)
         story.append(Spacer(1, 25))
 
-        # --- CORRECTION DU PRÉNOM CLIENT & RETRAIT EMAIL ---
         c_info = doc.get("client", {})
         nom_c = c_info.get("nom", "Inconnu") if isinstance(c_info, dict) else str(c_info)
-        # Gestion adaptative des clés 'prenom' ou 'prénom' avec accents
         prenom_c = c_info.get("prenom", c_info.get("prénom", "")) if isinstance(c_info, dict) else ""
         adr_c = c_info.get("adresse", "Adresse non renseignée") if isinstance(c_info, dict) else ""
         cp_c = c_info.get("code_postal", c_info.get("cp", "")) if isinstance(c_info, dict) else ""
@@ -387,7 +487,6 @@ class FacturationView(ft.Container):
         story.append(client_table)
         story.append(Spacer(1, 30))
 
-        # Articles
         headers = [
             Paragraph("<b>Désignation</b>", ParagraphStyle('H1', fontName='Helvetica-Bold', fontSize=9, textColor=colors.white)),
             Paragraph("<b>Qté</b>", ParagraphStyle('H2', fontName='Helvetica-Bold', fontSize=9, textColor=colors.white, alignment=2)),
@@ -429,7 +528,6 @@ class FacturationView(ft.Container):
         t_lines.setStyle(ts)
         story.append(t_lines)
 
-        # --- CADRE SIGNATURE & TRACÉ PAD ---
         story.append(Spacer(1, 30))
         signature_elements = []
         
@@ -440,7 +538,6 @@ class FacturationView(ft.Container):
             
         signature_elements.append(Spacer(1, 5))
         
-        # Résolution de l'image de signature extraite du pad
         sig_raw_path = doc.get("signature_path", doc.get("signature_img_path", ent.get("signature_pad", "")))
         sig_img_path = self._trouver_chemin_valide(sig_raw_path)
         
@@ -499,8 +596,10 @@ class FacturationView(ft.Container):
         type_doc, doc = self._selected_document()
         if not doc: return
         from views.create_document import CreateDocumentView
-        self.app.content_area.content = CreateDocumentView(app=self.app, doc_type=type_doc, doc_to_edit=doc)
-        self.app.page.update()
+        if hasattr(self.app, "content_area"):
+            self.app.content_area.content = CreateDocumentView(app=self.app, doc_type=type_doc, doc_to_edit=doc)
+        if self.page:
+            self.page.update()
 
     def supprimer_selectionne(self, e=None):
         type_doc, doc = self._selected_document()
@@ -508,22 +607,28 @@ class FacturationView(ft.Container):
 
         def confirmation_action(confirme):
             dialog.open = False
-            self.page.update()
+            if self.page:
+                self.page.update()
             if confirme:
                 if type_doc == "devis": self.app.devis.remove(doc)
                 else: self.app.factures.remove(doc)
-                self.app.save_data()
+                if hasattr(self.app, "save_data"):
+                    self.app.save_data()
                 self._refresh_table()
                 self.show_snack("Le document a été supprimé.")
 
         dialog = ft.AlertDialog(
             title=ft.Text("🚨 Suppression"),
             content=ft.Text(f"Supprimer le {type_doc} n°{doc['numero']} ?"),
-            actions=[ft.TextButton("Annuler", on_click=lambda _: confirmation_action(False)), ft.TextButton("Supprimer", on_click=lambda _: confirmation_action(True), style=ft.ButtonStyle(color=ft.colors.RED_600))]
+            actions=[
+                ft.TextButton("Annuler", on_click=lambda _: confirmation_action(False)), 
+                ft.TextButton("Supprimer", on_click=lambda _: confirmation_action(True), style=ft.ButtonStyle(color="red"))
+            ]
         )
-        self.page.overlay.append(dialog)
-        dialog.open = True
-        self.page.update()
+        if self.page:
+            self.page.overlay.append(dialog)
+            dialog.open = True
+            self.page.update()
 
     def marquer_payee(self, e=None):
         type_doc, doc = self._selected_document()
@@ -533,9 +638,10 @@ class FacturationView(ft.Container):
         date_aujourdhui = datetime.now().strftime("%d/%m/%Y")
         doc["statut"] = "Payée"
         doc["date_paiement"] = date_aujourdhui
-        self.app.save_data()
+        if hasattr(self.app, "save_data"):
+            self.app.save_data()
         self._refresh_table()
-        self.show_snack(f"Facture payée ! 💶")
+        self.show_snack("Facture payée ! 💶")
 
     def _next_invoice_number(self):
         factures_list = getattr(self.app, "factures", [])
@@ -546,7 +652,8 @@ class FacturationView(ft.Container):
         if not doc or type_doc != "facture": return
         doc["urssaf_declare"] = True
         doc["statut"] = "Déclarée"
-        self.app.save_data()
+        if hasattr(self.app, "save_data"):
+            self.app.save_data()
         self._refresh_table()
         self.show_snack("Marquée URSSAF. ✅")
 
@@ -565,9 +672,11 @@ class FacturationView(ft.Container):
             "statut": "À payer",
             "urssaf_declare": False
         }
-        self.app.factures.append(nouvelle_facture)
+        if hasattr(self.app, "factures"):
+            self.app.factures.append(nouvelle_facture)
         doc["statut"] = "Converti"
-        self.app.save_data()
+        if hasattr(self.app, "save_data"):
+            self.app.save_data()
         self._refresh_table()
         self.show_snack("Facture créée ! 🔄")
 
@@ -580,12 +689,16 @@ class FacturationView(ft.Container):
                 with open(e.path, mode="w", newline="", encoding="utf-8-sig") as f:
                     writer = csv.writer(f, delimiter=";")
                     writer.writerow(["Type", "Numéro", "Client", "Total TTC", "Statut"])
-                    for f in getattr(self.app, "factures", []):
-                        writer.writerow(["Facture", f.get("numero"), f.get("client", {}).get("nom"), f.get("total_ttc"), f.get("statut")])
+                    for f_doc in getattr(self.app, "factures", []):
+                        client_val = f_doc.get("client", {})
+                        nom_client = client_val.get("nom") if isinstance(client_val, dict) else str(client_val)
+                        writer.writerow(["Facture", f_doc.get("numero"), nom_client, f_doc.get("total_ttc"), f_doc.get("statut")])
                 self.show_snack("Export CSV réussi ! ✔")
-            except: pass
+            except Exception as ex:
+                self.show_snack(f"Erreur d'export CSV : {ex}", is_error=True)
 
     def show_snack(self, message, is_error=False):
-        self.app.page.snack_bar = ft.SnackBar(content=ft.Text(message), bgcolor=ft.colors.RED_700 if is_error else ft.colors.GREEN_700)
-        self.app.page.snack_bar.open = True
-        self.app.page.update()
+        if self.page:
+            self.page.snack_bar = ft.SnackBar(content=ft.Text(message), bgcolor="red" if is_error else "green")
+            self.page.snack_bar.open = True
+            self.page.update()
