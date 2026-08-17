@@ -1,6 +1,10 @@
-import flet as ft
-from datetime import datetime
 import os
+from datetime import datetime
+import flet as ft
+
+CARD_COLOR = "#1E1E22"
+ERROR_COLOR = "#EF4444"
+SUCCESS_COLOR = "#15803D"
 
 class FournisseursView(ft.Container):
     """Vue Flet complète pour la gestion des fiches fournisseurs (CRUD) et de leurs documents (BC/BL)."""
@@ -10,7 +14,11 @@ class FournisseursView(ft.Container):
         self.app = app
         self.expand = True
         self.padding = 15
-        self.accent_color = self.app.entreprise.get("accent_color", "#2B719E")
+        
+        # Récupération sécurisée de la couleur d'accentuation
+        self.accent_color = "#2B719E"
+        if hasattr(self.app, "entreprise") and isinstance(self.app.entreprise, dict):
+            self.accent_color = self.app.entreprise.get("accent_color", "#2B719E")
         
         # Indexations et sélections
         self.documents = {}  # Index { (type, numero): doc_data }
@@ -18,6 +26,9 @@ class FournisseursView(ft.Container):
         self.selected_fournisseur = None  # Dict du fournisseur sélectionné
 
         self._build_interface()
+
+    def did_mount(self):
+        """Chargement automatique des données au montage du composant."""
         self._refresh_fournisseurs_table()
         self._refresh_documents_table()
 
@@ -25,8 +36,11 @@ class FournisseursView(ft.Container):
         # --- EN-TÊTE PRINCIPAL ---
         header = ft.Row(
             controls=[
-                ft.IconButton(ft.icons.ARROW_BACK_ROUNDED, on_click=lambda e: self.app.navigate_to("Dashboard")),
-                ft.Text("🚚 Espace Fournisseurs & Logistique", size=24, weight=ft.FontWeight.BOLD),
+                ft.IconButton(
+                    icon=ft.icons.ARROW_BACK_ROUNDED, 
+                    on_click=lambda e: self.app.navigate_to("Dashboard")
+                ),
+                ft.Text("🚚 Espace Fournisseurs & Logistique", size=20, weight=ft.FontWeight.BOLD),
             ],
             alignment=ft.MainAxisAlignment.START,
         )
@@ -35,20 +49,18 @@ class FournisseursView(ft.Container):
         # ONGLET 1 : GESTION DES FICHES FOURNISSEURS
         # ============================================================
         
-        # Barre d'outils fournisseurs
         fourn_toolbar = ft.Row(
             controls=[
                 ft.ElevatedButton(
                     "➕ Ajouter un Fournisseur", 
                     bgcolor=self.accent_color, 
-                    color=ft.colors.WHITE, 
+                    color="white", 
                     icon=ft.icons.ADD_BUSINESS_ROUNDED,
                     on_click=lambda e: self.ouvrir_dialogue_fournisseur()
                 ),
             ]
         )
 
-        # Tableau des fournisseurs
         self.fourn_table = ft.DataTable(
             columns=[
                 ft.DataColumn(ft.Text("Nom / Entreprise", weight=ft.FontWeight.BOLD)),
@@ -73,13 +85,12 @@ class FournisseursView(ft.Container):
 
         fourn_actions = ft.Row(
             controls=[
-                ft.ElevatedButton("✏️ Modifier la fiche", bgcolor="#F59E0B", color=ft.colors.WHITE, on_click=lambda e: self.modifier_fournisseur_selectionne()),
-                ft.ElevatedButton("🗑️ Supprimer le fournisseur", bgcolor="#DC2626", color=ft.colors.WHITE, on_click=lambda e: self.supprimer_fournisseur_selectionne()),
+                ft.ElevatedButton("✏️ Modifier la fiche", bgcolor="#F59E0B", color="white", on_click=lambda e: self.modifier_fournisseur_selectionne()),
+                ft.ElevatedButton("🗑️ Supprimer le fournisseur", bgcolor="#DC2626", color="white", on_click=lambda e: self.supprimer_fournisseur_selectionne()),
             ],
             spacing=10
         )
 
-        # 🔴 CORRECTION : Remplacement de tourn_table_container par fourn_table_container
         tab_fournisseurs_content = ft.Column(
             controls=[fourn_toolbar, fourn_table_container, fourn_actions],
             spacing=15,
@@ -95,13 +106,13 @@ class FournisseursView(ft.Container):
                 ft.ElevatedButton(
                     "➕ Nouveau Bon de Commande", 
                     bgcolor=self.accent_color, 
-                    color=ft.colors.WHITE, 
+                    color="white", 
                     on_click=lambda e: self.app.navigate_to("NouveauBonCommande")
                 ),
                 ft.ElevatedButton(
                     "➕ Nouveau Bon de Livraison", 
                     bgcolor=self.accent_color, 
-                    color=ft.colors.WHITE, 
+                    color="white", 
                     on_click=lambda e: self.app.navigate_to("NouveauBonLivraison")
                 ),
             ],
@@ -111,7 +122,6 @@ class FournisseursView(ft.Container):
         self.search_entry = ft.TextField(
             label="🔍 Filtrer les documents (Double-cliquez sur une ligne pour ouvrir le PDF)",
             bgcolor="#1A1A1C",
-            height=45,
             text_size=13,
             on_change=self._refresh_documents_table,
             expand=True
@@ -141,11 +151,11 @@ class FournisseursView(ft.Container):
 
         doc_actions = ft.Row(
             controls=[
-                ft.ElevatedButton("👁️ Voir PDF", bgcolor="#2B719E", color=ft.colors.WHITE, on_click=self.ouvrir_pdf_selectionne),
-                ft.ElevatedButton("💾 Exporter PDF Classé", bgcolor="#8B5CF6", color=ft.colors.WHITE, on_click=self.exporter_pdf_organise),
-                ft.ElevatedButton("✏️ Modifier", bgcolor="#F59E0B", color=ft.colors.WHITE, on_click=self.modifier_doc_selectionne),
-                ft.ElevatedButton("🔄 Convertir BC en BL", bgcolor="#0EA5E9", color=ft.colors.WHITE, on_click=self.convertir_bc_en_bl),
-                ft.ElevatedButton("🗑️ Supprimer", bgcolor="#DC2626", color=ft.colors.WHITE, on_click=self.supprimer_doc_selectionne),
+                ft.ElevatedButton("👁️ Voir PDF", bgcolor="#2B719E", color="white", on_click=self.ouvrir_pdf_selectionne),
+                ft.ElevatedButton("💾 Exporter PDF Classé", bgcolor="#8B5CF6", color="white", on_click=self.exporter_pdf_organise),
+                ft.ElevatedButton("✏️ Modifier", bgcolor="#F59E0B", color="white", on_click=self.modifier_doc_selectionne),
+                ft.ElevatedButton("🔄 Convertir BC en BL", bgcolor="#0EA5E9", color="white", on_click=self.convertir_bc_en_bl),
+                ft.ElevatedButton("🗑️ Supprimer", bgcolor="#DC2626", color="white", on_click=self.supprimer_doc_selectionne),
             ],
             spacing=8,
             wrap=True
@@ -168,7 +178,6 @@ class FournisseursView(ft.Container):
             expand=True,
         )
 
-        # Assemblage final
         self.content = ft.Column(
             controls=[header, self.tabs],
             spacing=15,
@@ -209,26 +218,27 @@ class FournisseursView(ft.Container):
             r.selected = False
         row_obj.selected = True
         self.selected_fournisseur = fourn_dict
-        self.page.update()
+        if self.page:
+            self.page.update()
 
     def ouvrir_dialogue_fournisseur(self, fourn_to_edit=None):
-        nom_tf = ft.TextField(label="Nom du Fournisseur / Entreprise", value=fourn_to_edit.get("nom", "") if fourn_to_edit else "")
+        nom_tf = ft.TextField(label="Nom du Fournisseur / Entreprise *", value=fourn_to_edit.get("nom", "") if fourn_to_edit else "")
         tel_tf = ft.TextField(label="Téléphone", value=fourn_to_edit.get("telephone", "") if fourn_to_edit else "")
         email_tf = ft.TextField(label="Email", value=fourn_to_edit.get("email", "") if fourn_to_edit else "")
         siret_tf = ft.TextField(label="Numéro SIRET", value=fourn_to_edit.get("siret", "") if fourn_to_edit else "")
         adresse_tf = ft.TextField(label="Adresse complète", multiline=True, min_lines=2, value=fourn_to_edit.get("adresse", "") if fourn_to_edit else "")
 
         def valider_enregistrement(e):
-            if not nom_tf.value.strip():
+            if not nom_tf.value or not nom_tf.value.strip():
                 self.show_snack("Le nom du fournisseur est obligatoire.", is_error=True)
                 return
             
             data = {
                 "nom": nom_tf.value.strip(),
-                "telephone": tel_tf.value.strip(),
-                "email": email_tf.value.strip(),
-                "siret": siret_tf.value.strip(),
-                "adresse": adresse_tf.value.strip()
+                "telephone": tel_tf.value.strip() if tel_tf.value else "",
+                "email": email_tf.value.strip() if email_tf.value else "",
+                "siret": siret_tf.value.strip() if siret_tf.value else "",
+                "adresse": adresse_tf.value.strip() if adresse_tf.value else ""
             }
 
             if fourn_to_edit:
@@ -240,22 +250,26 @@ class FournisseursView(ft.Container):
                 self.app.fournisseurs.append(data)
                 self.show_snack("Nouveau fournisseur enregistré avec succès.")
 
-            self.app.save_data()
+            if hasattr(self.app, "save_data"):
+                self.app.save_data()
+
             dialog.open = False
-            self.page.update()
+            if self.page:
+                self.page.update()
             self._refresh_fournisseurs_table()
 
         dialog = ft.AlertDialog(
             title=ft.Text("🏢 Fiche Fournisseur" if fourn_to_edit else "➕ Nouveau Fournisseur"),
             content=ft.Column([nom_tf, tel_tf, email_tf, siret_tf, adresse_tf], tight=True, spacing=10),
             actions=[
-                ft.TextButton("Annuler", on_click=lambda _: setattr(dialog, "open", False) or self.page.update()),
-                ft.ElevatedButton("Enregistrer", bgcolor=self.accent_color, color=ft.colors.WHITE, on_click=valider_enregistrement)
+                ft.TextButton("Annuler", on_click=lambda _: self._close_dialog(dialog)),
+                ft.ElevatedButton("Enregistrer", bgcolor=self.accent_color, color="white", on_click=valider_enregistrement)
             ]
         )
-        self.page.overlay.append(dialog)
-        dialog.open = True
-        self.page.update()
+        if self.page:
+            self.page.overlay.append(dialog)
+            dialog.open = True
+            self.page.update()
 
     def modifier_fournisseur_selectionne(self):
         if not self.selected_fournisseur:
@@ -270,25 +284,28 @@ class FournisseursView(ft.Container):
 
         def confirmer(confirme):
             dialog.open = False
-            self.page.update()
+            if self.page:
+                self.page.update()
             if confirme:
-                self.app.fournisseurs.remove(self.selected_fournisseur)
-                self.app.save_data()
-                self._refresh_fournisseurs_table()
-                self.show_snack("Fournisseur supprimé.")
+                if self.selected_fournisseur in self.app.fournisseurs:
+                    self.app.fournisseurs.remove(self.selected_fournisseur)
+                    if hasattr(self.app, "save_data"):
+                        self.app.save_data()
+                    self._refresh_fournisseurs_table()
+                    self.show_snack("Fournisseur supprimé.")
 
         dialog = ft.AlertDialog(
             title=ft.Text("🚨 Suppression de compte"),
             content=ft.Text(f"Voulez-vous vraiment supprimer {self.selected_fournisseur.get('nom')} ?"),
             actions=[
                 ft.TextButton("Annuler", on_click=lambda _: confirmer(False)),
-                ft.TextButton("Supprimer", on_click=lambda _: confirmer(True), style=ft.ButtonStyle(color=ft.colors.RED_600))
+                ft.TextButton("Supprimer", on_click=lambda _: confirmer(True), style=ft.ButtonStyle(color="#DC2626"))
             ]
         )
-        self.page.overlay.append(dialog)
-        dialog.open = True
-        self.page.update()
-
+        if self.page:
+            self.page.overlay.append(dialog)
+            dialog.open = True
+            self.page.update()
 
     # ============================================================
     # LOGIQUE : GESTION DES DOCUMENTS (BC / BL)
@@ -316,7 +333,8 @@ class FournisseursView(ft.Container):
             self.page.update()
 
     def _match_query(self, doc, type_doc, query):
-        if not query: return True
+        if not query: 
+            return True
         num = str(doc.get("numero", "")).lower()
         fourn = doc.get("fournisseur", {})
         nom = fourn.get("nom", "").lower() if isinstance(fourn, dict) else str(fourn).lower()
@@ -343,7 +361,8 @@ class FournisseursView(ft.Container):
                 r.selected = False
             row.selected = True
             self.selected_doc_key = key
-            self.page.update()
+            if self.page:
+                self.page.update()
 
         def handle_double_tap(e):
             handle_single_tap(e)
@@ -355,7 +374,7 @@ class FournisseursView(ft.Container):
                     content=ft.Container(
                         content=ft.Text(text, color=color, weight=weight),
                         alignment=ft.alignment.center_left,
-                        bgcolor=ft.colors.TRANSPARENT,
+                        bgcolor="transparent",
                         expand=True,
                     ),
                     on_tap=handle_single_tap,
@@ -505,41 +524,52 @@ class FournisseursView(ft.Container):
 
     def modifier_doc_selectionne(self, e=None):
         type_doc, doc = self._selected_document()
-        if not doc: return
+        if not doc: 
+            return
             
         from views.create_document import CreateDocumentView
-        self.app.content_area.content = CreateDocumentView(app=self.app, doc_type=type_doc, doc_to_edit=doc)
-        self.app.page.update()
+        if hasattr(self.app, "content_area"):
+            self.app.content_area.content = CreateDocumentView(app=self.app, doc_type=type_doc, doc_to_edit=doc)
+        if self.page:
+            self.page.update()
 
     def supprimer_doc_selectionne(self, e=None):
         type_doc, doc = self._selected_document()
-        if not doc: return
+        if not doc: 
+            return
 
         def confirmation_action(confirme):
             dialog.open = False
-            self.page.update()
+            if self.page:
+                self.page.update()
             if confirme:
-                if type_doc == "bon_commande": self.app.bons_commande.remove(doc)
-                else: self.app.bons_livraison.remove(doc)
-                self.app.save_data()
+                if type_doc == "bon_commande" and hasattr(self.app, "bons_commande"):
+                    self.app.bons_commande.remove(doc)
+                elif hasattr(self.app, "bons_livraison"):
+                    self.app.bons_livraison.remove(doc)
+                    
+                if hasattr(self.app, "save_data"):
+                    self.app.save_data()
                 self._refresh_documents_table()
                 self.show_snack("Le document fournisseur a été supprimé.")
 
         dialog = ft.AlertDialog(
             title=ft.Text("🚨 Confirmation de suppression"),
-            content=ft.Text(f"Supprimer définitivement le document n°{doc['numero']} ?"),
+            content=ft.Text(f"Supprimer définitivement le document n°{doc.get('numero')} ?"),
             actions=[
                 ft.TextButton("Annuler", on_click=lambda _: confirmation_action(False)),
-                ft.TextButton("Confirmer", on_click=lambda _: confirmation_action(True), style=ft.ButtonStyle(color=ft.colors.RED_600)),
+                ft.TextButton("Confirmer", on_click=lambda _: confirmation_action(True), style=ft.ButtonStyle(color="#DC2626")),
             ]
         )
-        self.page.overlay.append(dialog)
-        dialog.open = True
-        self.page.update()
+        if self.page:
+            self.page.overlay.append(dialog)
+            dialog.open = True
+            self.page.update()
 
     def convertir_bc_en_bl(self, e=None):
         type_doc, doc = self._selected_document()
-        if not doc: return
+        if not doc: 
+            return
         
         if type_doc != "bon_commande":
             self.show_snack("Veuillez sélectionner un Bon de Commande.", is_error=True)
@@ -560,16 +590,28 @@ class FournisseursView(ft.Container):
             "statut": "Reçu",
         }
 
+        if not hasattr(self.app, "bons_livraison") or self.app.bons_livraison is None:
+            self.app.bons_livraison = []
+            
         self.app.bons_livraison.append(nouveau_bl)
         doc["statut"] = "Livré"
-        self.app.save_data()
+        
+        if hasattr(self.app, "save_data"):
+            self.app.save_data()
+            
         self._refresh_documents_table()
         self.show_snack(f"Bon de Livraison {num_bl} généré ! 🔄")
 
+    def _close_dialog(self, dialog):
+        dialog.open = False
+        if self.page:
+            self.page.update()
+
     def show_snack(self, message, is_error=False):
-        self.app.page.snack_bar = ft.SnackBar(
-            content=ft.Text(message),
-            bgcolor=ft.colors.RED_700 if is_error else ft.colors.GREEN_700
-        )
-        self.app.page.snack_bar.open = True
-        self.app.page.update()
+        if self.page:
+            self.page.snack_bar = ft.SnackBar(
+                content=ft.Text(message),
+                bgcolor=ERROR_COLOR if is_error else SUCCESS_COLOR
+            )
+            self.page.snack_bar.open = True
+            self.page.update()
