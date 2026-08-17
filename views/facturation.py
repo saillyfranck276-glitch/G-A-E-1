@@ -81,25 +81,26 @@ class FacturationView(ft.Container):
 
   def __init__(self, app):
     super().__init__()
-    self.app = app
-    self.expand = True
-    self.padding = 10
-    self.accent_color = "#2B719E"
+    try:
+      self.app = app
+      self.expand = True
+      self.padding = 10
+      self.accent_color = "#2B719E"
 
-    if hasattr(self.app, "entreprise") and isinstance(
-        self.app.entreprise, dict
-    ):
-      self.accent_color = self.app.entreprise.get("accent_color", "#2B719E")
+      if hasattr(self.app, "entreprise") and isinstance(
+          self.app.entreprise, dict
+      ):
+        self.accent_color = self.app.entreprise.get("accent_color", "#2B719E")
 
-    self.documents = {}
-    self.selected_doc_key = None
+      self.documents = {}
+      self.selected_doc_key = None
 
-    self.csv_picker = ft.FilePicker(on_result=self._on_csv_export_result)
+      self.csv_picker = ft.FilePicker(on_result=self._on_csv_export_result)
+      self.display_container = ft.Container(expand=True)
 
-    # Conteneur dynamique d'affichage (Tableau ou cartes)
-    self.display_container = ft.Container(expand=True)
-
-    self._build_interface()
+      self._build_interface()
+    except Exception as ex:
+      self._render_error_ui(f"Erreur d'initialisation : {ex}")
 
   def did_mount(self):
     try:
@@ -112,7 +113,6 @@ class FacturationView(ft.Container):
       self._render_error_ui(str(ex))
 
   def safe_update(self):
-    """Mise à jour sécurisée de l'UI."""
     try:
       if self.page:
         self.update()
@@ -120,7 +120,6 @@ class FacturationView(ft.Container):
       pass
 
   def _render_error_ui(self, error_msg):
-    """Affichage d'erreur visuel pour éviter l'écran blanc."""
     self.content = ft.Container(
         padding=15,
         bgcolor="#3f1212",
@@ -129,7 +128,7 @@ class FacturationView(ft.Container):
         content=ft.Column(
             [
                 ft.Text(
-                    "⚠️ Erreur de chargement de la Facturation",
+                    "⚠️ Erreur dans la Facturation",
                     color="red300",
                     weight=ft.FontWeight.BOLD,
                 ),
@@ -197,7 +196,6 @@ class FacturationView(ft.Container):
         expand=True,
     )
 
-    # Tableau pour ordinateurs/tablettes
     self.table = ft.DataTable(
         columns=[
             ft.DataColumn(ft.Text("Type", weight=ft.FontWeight.BOLD)),
@@ -212,7 +210,6 @@ class FacturationView(ft.Container):
         show_checkbox_column=False,
     )
 
-    # Grille d'actions réactive
     def btn_grid(text, icon, color, action):
       return ft.Column(
           [
@@ -280,17 +277,23 @@ class FacturationView(ft.Container):
       self.table.rows.clear()
       query = (
           self.search_entry.value.strip().lower()
-          if self.search_entry.value
+          if self.search_entry
+          and hasattr(self.search_entry, "value")
+          and self.search_entry.value
           else ""
       )
 
       filtered_docs = []
 
-      for devis in getattr(self.app, "devis", []):
+      devis_raw = getattr(self.app, "devis", [])
+      devis_list = devis_raw if isinstance(devis_raw, list) else []
+      for devis in devis_list:
         if self._match_query(devis, "devis", query):
           filtered_docs.append((devis, "devis"))
 
-      for facture in getattr(self.app, "factures", []):
+      factures_raw = getattr(self.app, "factures", [])
+      factures_list = factures_raw if isinstance(factures_raw, list) else []
+      for facture in factures_list:
         if self._match_query(facture, "facture", query):
           filtered_docs.append((facture, "facture"))
 
@@ -301,7 +304,7 @@ class FacturationView(ft.Container):
 
       self.safe_update()
     except Exception as ex:
-      print(f"Erreur rafraîchissement tableau: {ex}")
+      print(f"Erreur _refresh_table : {ex}")
 
   def _render_desktop_table(self, docs):
     for doc, type_doc in docs:
@@ -315,7 +318,7 @@ class FacturationView(ft.Container):
         ),
         bgcolor="#141416",
         border_radius=12,
-        border=safe_border(1, "#2A2A2E"),  # ✅ Sécurisé Android
+        border=safe_border(1, "#2A2A2E"),
         padding=10,
         min_height=300,
         expand=True,
@@ -344,7 +347,7 @@ class FacturationView(ft.Container):
 
       card_content = ft.Container(
           bgcolor="#1E1E22" if not is_selected else "#2A3A4E",
-          border=safe_border(  # ✅ Sécurisé Android
+          border=safe_border(
               1.5 if is_selected else 1,
               self.accent_color if is_selected else "#2A2A32",
           ),
@@ -981,9 +984,11 @@ class FacturationView(ft.Container):
       self.safe_update()
       if confirme:
         if type_doc == "devis":
-          self.app.devis.remove(doc)
+          if hasattr(self.app, "devis") and doc in self.app.devis:
+            self.app.devis.remove(doc)
         else:
-          self.app.factures.remove(doc)
+          if hasattr(self.app, "factures") and doc in self.app.factures:
+            self.app.factures.remove(doc)
         if hasattr(self.app, "save_data"):
           self.app.save_data()
         self._refresh_table()
@@ -1025,6 +1030,8 @@ class FacturationView(ft.Container):
 
   def _next_invoice_number(self):
     factures_list = getattr(self.app, "factures", [])
+    if not isinstance(factures_list, list):
+      factures_list = []
     return f"FAC-{len(factures_list) + 1:03d}"
 
   def declarer_urssaf(self, e=None):
@@ -1055,6 +1062,8 @@ class FacturationView(ft.Container):
         "urssaf_declare": False,
     }
     if hasattr(self.app, "factures"):
+      if not isinstance(self.app.factures, list):
+        self.app.factures = []
       self.app.factures.append(nouvelle_facture)
     doc["statut"] = "Converti"
     if hasattr(self.app, "save_data"):
@@ -1075,20 +1084,22 @@ class FacturationView(ft.Container):
           writer.writerow(
               ["Type", "Numéro", "Client", "Total TTC", "Statut"]
           )
-          for f_doc in getattr(self.app, "factures", []):
-            client_val = f_doc.get("client", {})
-            nom_client = (
-                client_val.get("nom")
-                if isinstance(client_val, dict)
-                else str(client_val)
-            )
-            writer.writerow([
-                "Facture",
-                f_doc.get("numero"),
-                nom_client,
-                f_doc.get("total_ttc"),
-                f_doc.get("statut"),
-            ])
+          factures_list = getattr(self.app, "factures", [])
+          if isinstance(factures_list, list):
+            for f_doc in factures_list:
+              client_val = f_doc.get("client", {})
+              nom_client = (
+                  client_val.get("nom")
+                  if isinstance(client_val, dict)
+                  else str(client_val)
+              )
+              writer.writerow([
+                  "Facture",
+                  f_doc.get("numero"),
+                  nom_client,
+                  f_doc.get("total_ttc"),
+                  f_doc.get("statut"),
+              ])
         self.show_snack("Export CSV réussi ! ✔")
       except Exception as ex:
         self.show_snack(f"Erreur d'export CSV : {ex}", is_error=True)
