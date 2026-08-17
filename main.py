@@ -34,7 +34,6 @@ class FacturationAndroidApp:
         self.page.window_min_height = 600
         
         # 🟢 CRUCIAL POUR LE RESPONSIVE : On désactive le scroll global de la page
-        # pour laisser les conteneurs internes gérer leur propre espace avec expand=True
         self.page.scroll = None
 
         # ----------------------------------------------------
@@ -72,13 +71,13 @@ class FacturationAndroidApp:
         # Chargement initial de la base de données
         self.load_data()
 
-        # Zone centrale d'affichage de droite (Fluide et prend tout le reste de l'écran)
+        # Zone centrale d'affichage de droite
         self.content_area = ft.Container(
             expand=True,
             padding=20,
         )
 
-        # Initialisation complète de l'interface et de la barre latérale
+        # Initialisation complète de l'interface
         self.setup_layout()
 
         # Navigation automatique vers la vue par défaut au démarrage
@@ -133,7 +132,6 @@ class FacturationAndroidApp:
 
     def setup_layout(self):
         """Prépare et monte l'architecture graphique principale (Sidebar + Content)."""
-        # Titre de la barre latérale
         self.sidebar_titre = ft.Text(
             self.entreprise.get("nom", "GESTION"),
             size=22,
@@ -146,7 +144,6 @@ class FacturationAndroidApp:
             padding=20,
         )
 
-        # Conteneur vertical accueillant la liste des boutons de navigation
         self.menu_column = ft.Column(
             spacing=8,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -154,7 +151,6 @@ class FacturationAndroidApp:
             expand=True,
         )
 
-        # 🟢 CORRECTION LIGNE 158 : Passé en argument positionnel
         btn_reglages = ft.OutlinedButton(
             "⚙️ Réglages",
             width=220,
@@ -170,7 +166,7 @@ class FacturationAndroidApp:
                 controls=[
                     titre_container,
                     ft.Divider(),
-                    self.menu_column,  # Les boutons du menu s'injecteront ici
+                    self.menu_column,
                     ft.Divider(),
                     btn_reglages,
                 ],
@@ -180,10 +176,7 @@ class FacturationAndroidApp:
             ),
         )
 
-        # Génération initiale de la liste des boutons
-        self.refresh_sidebar()
-
-        # Injection finale et officielle des composants majeurs sur la page Flet
+        # 🟢 FIX 1 : On ajoute d'abord les composants à la page avant d'appeler refresh_sidebar()
         self.page.add(
             ft.Row(
                 controls=[
@@ -195,12 +188,14 @@ class FacturationAndroidApp:
             )
         )
 
+        # Génération initiale de la liste des boutons
+        self.refresh_sidebar()
+
     def refresh_sidebar(self):
         """Reconstruit dynamiquement la liste des onglets selon la configuration de la TVA."""
         accent = self.entreprise.get("accent_color", "#2B719E")
         self.sidebar_titre.value = self.entreprise.get("nom", "GESTION").upper()
 
-        # Liste de base des menus de l'application
         menu = [
             ("📊 Dashboard", "Dashboard"),
             ("🧾 Facturation", "Facturation"),
@@ -211,11 +206,9 @@ class FacturationAndroidApp:
             ("📈 Finance", "Finance"),
         ]
 
-        # 🎯 CONDITION TVA : L'onglet Comptabilité est injecté uniquement si tva_activee est True
         if self.entreprise.get("tva_activee", False):
             menu.append(("🧮 Comptabilité", "Comptabilite"))
 
-        # Suite et fin des menus standards
         menu.extend([
             ("✉️ Mails", "Mails"),
             ("📅 Agenda", "Agenda"),
@@ -224,7 +217,6 @@ class FacturationAndroidApp:
 
         self.menu_buttons = []
         for texte, vue in menu:
-            # 🟢 CORRECTION : Argument positionnel pour le texte du bouton
             btn = ft.ElevatedButton(
                 texte,
                 width=220,
@@ -236,12 +228,13 @@ class FacturationAndroidApp:
             )
             self.menu_buttons.append(btn)
 
-        # Affectation de la liste mise à jour
         self.menu_column.controls = self.menu_buttons
         
-        # Solution de sécurité anti-crash
-        if self.menu_column.page:
+        # 🟢 FIX 2 : Bloc try/except sécurisé au lieu de tester `.page` qui faisait planter Flet
+        try:
             self.menu_column.update()
+        except Exception:
+            pass
 
     def navigate_to(self, view_name, **kwargs):
         """Gère le routage et le chargement paresseux des différentes vues."""
