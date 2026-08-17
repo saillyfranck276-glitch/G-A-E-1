@@ -26,25 +26,22 @@ class DashboardView(ft.Container):
         self.setup_ui()
 
     def setup_ui(self):
-        # 🟢 CORRECTION 1 : Force le rechargement des données depuis database.json avant le calcul
         if hasattr(self.app, "load_data"):
             self.app.load_data()
 
         # 1. CALCULS DES DONNÉES EN TEMPS RÉEL
         factures_list = getattr(self.app, "factures", [])
         
-        # 🟢 CORRECTION 2 : Filtrage robuste insensible à la casse et aux accents fréquents
         factures_valides = [
             f for f in factures_list 
             if str(f.get("statut", "")).lower() in ["payée", "validée", "encaissée", "payee", "encaissee", "payé", "valide"]
         ]
         
-        # 🟢 CORRECTION 3 : Prise en charge de 'total_ttc' ou 'montant_ttc' comme dans facturation.py
         total_ca = sum(safe_float(f.get("total_ttc", f.get("montant_ttc", 0))) for f in factures_valides)
         nb_factures = len(factures_valides)
         panier_moyen = total_ca / nb_factures if nb_factures > 0 else 0.0
 
-        # Fonction pour l'effet visuel dynamique au survol des cartes (Hover effect)
+        # Fonction pour l'effet visuel dynamique au survol des cartes
         def card_hover(e):
             e.control.border = ft.border.all(1.5, self.accent_color if e.data == "true" else "#2A2A32")
             e.control.update()
@@ -60,39 +57,39 @@ class DashboardView(ft.Container):
                 content=ft.Row([
                     ft.Column([
                         ft.Text(title, size=11, color="#AEAEB2", weight=ft.FontWeight.W_600),
-                        ft.Text(value, size=22, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE),
+                        ft.Text(value, size=22, weight=ft.FontWeight.BOLD, color="white"),
                         *( [ft.Text(subtitle, size=11, color="#34D399")] if subtitle else [] )
                     ], spacing=4, expand=True),
                     ft.Container(
                         content=ft.Icon(icon, color=icon_color, size=22),
-                        bgcolor=ft.colors.with_opacity(0.1, icon_color),
+                        bgcolor="#2A2A32",
                         padding=12,
                         border_radius=10
                     )
                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER)
             )
 
-        # Génération des 3 cartes KPI fondamentales
+        # Génération des 3 cartes KPI avec noms d'icônes sécurisés
         card_ca = create_kpi_card(
             title="CHIFFRE D'AFFAIRES ENCAISSÉ",
             value=f"{total_ca:,.2f} €".replace(",", " "),
-            icon=ft.icons.ATTACH_MONEY,
-            icon_color=ft.colors.GREEN_400,
+            icon="attach_money",
+            icon_color="green",
             subtitle="📈 Objectifs en bonne voie" if total_ca > 0 else None
         )
 
         card_panier = create_kpi_card(
             title="PANIER MOYEN CLIENT",
             value=f"{panier_moyen:,.2f} €".replace(",", " "),
-            icon=ft.icons.SHOPPING_BAG,
+            icon="shopping_bag",
             icon_color=self.accent_color
         )
 
         card_volume = create_kpi_card(
             title="FACTURES ENCAISSÉES",
             value=f"{nb_factures} document(s)",
-            icon=ft.icons.ANALYTICS,
-            icon_color=ft.colors.ORANGE_400
+            icon="analytics",
+            icon_color="orange"
         )
 
         # 3. CONSTRUCTEUR DES BOUTONS DE NAVIGATION RAPIDE (QUICK ACTIONS)
@@ -106,7 +103,7 @@ class DashboardView(ft.Container):
                 on_hover=lambda e: setattr(e.control, "bgcolor", "#1A1A1E" if e.data == "true" else "#141416") or e.control.update(),
                 content=ft.Row([
                     ft.Icon(icon, color=self.accent_color, size=18),
-                    ft.Text(text, size=13, weight=ft.FontWeight.W_600, color=ft.colors.WHITE)
+                    ft.Text(text, size=13, weight=ft.FontWeight.W_600, color="white")
                 ], spacing=10, alignment=ft.MainAxisAlignment.CENTER),
                 expand=True
             )
@@ -119,9 +116,9 @@ class DashboardView(ft.Container):
             content=ft.Column([
                 ft.Text("⚡ RACCOURCIS ET ACTIONS RAPIDES", size=12, color="#AEAEB2", weight=ft.FontWeight.BOLD),
                 ft.Row([
-                    create_shortcut_btn("Nouvelle Facture", ft.icons.ADD, "NouvelleFacture"),
-                    create_shortcut_btn("Suivi TVA & Charges", ft.icons.ACCOUNT_BALANCE_WALLET, "Comptabilite"),
-                    create_shortcut_btn("Consulter l'Agenda", ft.icons.CALENDAR_MONTH, "Agenda"),
+                    create_shortcut_btn("Nouvelle Facture", "add", "NouvelleFacture"),
+                    create_shortcut_btn("Suivi TVA & Charges", "account_balance_wallet", "Comptabilite"),
+                    create_shortcut_btn("Consulter l'Agenda", "calendar_month", "Agenda"),
                 ], spacing=12)
             ], spacing=10)
         )
@@ -140,7 +137,7 @@ class DashboardView(ft.Container):
             text_size=13,
             height=45,
             content_padding=12,
-            text_style=ft.TextStyle(color=ft.colors.WHITE),
+            text_style=ft.TextStyle(color="white"),
             on_submit=self._analyser_requete
         )
 
@@ -152,12 +149,12 @@ class DashboardView(ft.Container):
             content=ft.Column([
                 ft.Row([
                     ft.Container(
-                        content=ft.Icon(ft.icons.AUTO_AWESOME, color=self.accent_color, size=18),
-                        bgcolor=ft.colors.with_opacity(0.1, self.accent_color),
+                        content=ft.Icon("auto_awesome", color=self.accent_color, size=18),
+                        bgcolor="#2A2A32",
                         padding=6,
                         border_radius=6
                     ),
-                    ft.Text("ASSISTANT VIRTUEL IA", weight=ft.FontWeight.BOLD, size=13, color=ft.colors.WHITE)
+                    ft.Text("ASSISTANT VIRTUEL IA", weight=ft.FontWeight.BOLD, size=13, color="white")
                 ], spacing=10),
                 ft.Divider(color="#2A2A32", height=15),
                 ft.Container(
@@ -170,8 +167,8 @@ class DashboardView(ft.Container):
                 ft.Row([
                     self.chat_input,
                     ft.IconButton(
-                        icon=ft.icons.NAVIGATE_NEXT,
-                        icon_color=ft.colors.WHITE,
+                        icon="navigate_next",
+                        icon_color="white",
                         bgcolor=self.accent_color,
                         height=45,
                         width=45,
@@ -189,7 +186,7 @@ class DashboardView(ft.Container):
                 controls=[
                     ft.Row([
                         ft.Column([
-                            ft.Text("Bonjour 👋", size=28, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE),
+                            ft.Text("Bonjour 👋", size=28, weight=ft.FontWeight.BOLD, color="white"),
                             ft.Text("Voici un aperçu en temps réel de votre activité commerciale.", size=13, color="#AEAEB2")
                         ], spacing=2)
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -218,7 +215,6 @@ class DashboardView(ft.Container):
         if not query: 
             return
         
-        # 🟢 CORRECTION EXTRA : Force aussi la mise à jour pour l'IA intégrée au survol
         if hasattr(self.app, "load_data"):
             self.app.load_data()
         
@@ -231,7 +227,7 @@ class DashboardView(ft.Container):
         if "ca" in query or "chiffre d'affaires" in query:
             total_ca = sum(safe_float(f.get("total_ttc", f.get("montant_ttc", 0))) for f in factures_valides)
             self.chat_response.value = f"Votre Chiffre d'Affaires total encaissé s'élève à précisément {total_ca:,.2f} €.".replace(",", " ")
-            self.chat_response.color = ft.colors.GREEN_400
+            self.chat_response.color = "green"
         elif "panier" in query:
             total_ca = sum(safe_float(f.get("total_ttc", f.get("montant_ttc", 0))) for f in factures_valides)
             nb = len(factures_valides)
