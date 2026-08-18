@@ -44,7 +44,9 @@ class ClientsView(ft.Container):
             on_change=self.filtrer_clients,
         )
 
-        self.list_column = ft.Column(spacing=10, expand=True)
+        self.list_column = ft.Column(
+            spacing=10, scroll=ft.ScrollMode.AUTO, expand=True
+        )
         self.view_container = ft.Container(expand=True)
         self.content = ft.Column([self.view_container], expand=True)
 
@@ -59,13 +61,14 @@ class ClientsView(ft.Container):
         self.load_clients_list()
 
         self.view_container.content = ft.Column(
-            scroll=ft.ScrollMode.AUTO,
             spacing=15,
             expand=True,
             controls=[
                 ft.Row(
                     [
-                        ft.Text("👥 Gestion des Clients", size=20, weight="bold"),
+                        ft.Text(
+                            "👥 Gestion des Clients", size=20, weight="bold"
+                        ),
                         ft.ElevatedButton(
                             "+ Nouveau Client",
                             bgcolor=self.accent_color,
@@ -88,7 +91,7 @@ class ClientsView(ft.Container):
             ],
         )
         if self.page:
-            self.update()
+            self.page.update()
 
     def afficher_ecran_formulaire(self, index_client=None):
         self.current_editing_index = index_client
@@ -106,6 +109,7 @@ class ClientsView(ft.Container):
         self.view_container.content = ft.Column(
             scroll=ft.ScrollMode.AUTO,
             spacing=20,
+            expand=True,
             controls=[
                 ft.Row(
                     [
@@ -186,7 +190,7 @@ class ClientsView(ft.Container):
             ],
         )
         if self.page:
-            self.update()
+            self.page.update()
 
     def creer_section_card(self, titre, composants):
         return ft.Container(
@@ -208,15 +212,16 @@ class ClientsView(ft.Container):
     # ============================================================
 
     def load_clients_list(self, filtre_texte=""):
+        self.clients = getattr(self.app, "clients", [])
         self.list_column.controls.clear()
         filtre_lower = filtre_texte.lower().strip()
 
         clients_filtrés = [
             (idx, c)
             for idx, c in enumerate(self.clients)
-            if filtre_lower in c.get("nom", "").lower()
-            or filtre_lower in c.get("email", "").lower()
-            or filtre_lower in c.get("ville", "").lower()
+            if filtre_lower in str(c.get("nom", "")).lower()
+            or filtre_lower in str(c.get("email", "")).lower()
+            or filtre_lower in str(c.get("ville", "")).lower()
         ]
 
         if not clients_filtrés:
@@ -292,8 +297,9 @@ class ClientsView(ft.Container):
         )
 
     def sauvegarder_fiche(self, e):
+        page_obj = self.page or getattr(self.app, "page", None)
+
         if not self.input_nom.value or not self.input_nom.value.strip():
-            page_obj = self.page or getattr(self.app, "page", None)
             if page_obj:
                 page_obj.snack_bar = ft.SnackBar(
                     content=ft.Text("Le nom du client est obligatoire !"),
@@ -326,6 +332,12 @@ class ClientsView(ft.Container):
 
     def supprimer_fiche(self, index):
         page_obj = self.page or getattr(self.app, "page", None)
+        if not page_obj:
+            return
+
+        def fermer_dialog(e):
+            dialog_confirmation.open = False
+            page_obj.update()
 
         def confirmer_suppression(e):
             if index < len(self.clients):
@@ -333,8 +345,7 @@ class ClientsView(ft.Container):
                 if hasattr(self.app, "save_data"):
                     self.app.save_data()
             dialog_confirmation.open = False
-            if page_obj:
-                page_obj.update()
+            page_obj.update()
             self.afficher_ecran_liste()
 
         dialog_confirmation = ft.AlertDialog(
@@ -343,13 +354,7 @@ class ClientsView(ft.Container):
                 f"Supprimer le client '{self.clients[index].get('nom')}' ?"
             ),
             actions=[
-                ft.TextButton(
-                    "Annuler",
-                    on_click=lambda e: setattr(
-                        dialog_confirmation, "open", False
-                    )
-                    or page_obj.update(),
-                ),
+                ft.TextButton("Annuler", on_click=fermer_dialog),
                 ft.ElevatedButton(
                     "Supprimer",
                     bgcolor="#B91C1C",
@@ -358,11 +363,9 @@ class ClientsView(ft.Container):
                 ),
             ],
         )
-        if page_obj:
-            if dialog_confirmation not in page_obj.overlay:
-                page_obj.overlay.append(dialog_confirmation)
-            dialog_confirmation.open = True
-            page_obj.update()
+        page_obj.dialog = dialog_confirmation
+        dialog_confirmation.open = True
+        page_obj.update()
 
     # ============================================================
     # ⚙️ FONCTIONS AUXILIAIRES
@@ -372,17 +375,17 @@ class ClientsView(ft.Container):
         txt = self.input_recherche.value or ""
         self.load_clients_list(filtre_texte=txt)
         if self.page:
-            self.list_column.update()
+            self.page.update()
 
     def pre_remplir_formulaire(self, index):
         c = self.clients[index]
-        self.input_nom.value = c.get("nom", "")
-        self.input_email.value = c.get("email", "")
-        self.input_telephone.value = c.get("telephone", "")
-        self.input_adresse.value = c.get("adresse", "")
-        self.input_cp.value = c.get("code_postal", "")
-        self.input_ville.value = c.get("ville", "")
-        self.input_siret.value = c.get("siret", "")
+        self.input_nom.value = str(c.get("nom", ""))
+        self.input_email.value = str(c.get("email", ""))
+        self.input_telephone.value = str(c.get("telephone", ""))
+        self.input_adresse.value = str(c.get("adresse", ""))
+        self.input_cp.value = str(c.get("code_postal", ""))
+        self.input_ville.value = str(c.get("ville", ""))
+        self.input_siret.value = str(c.get("siret", ""))
 
     def vider_formulaire(self):
         self.input_nom.value = ""
