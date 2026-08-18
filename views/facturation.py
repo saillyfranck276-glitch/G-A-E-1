@@ -33,7 +33,7 @@ def safe_border(width=1, color="#2A2A32"):
 
 
 class NumberedCanvas(canvas.Canvas if REPORTLAB_AVAILABLE else object):
-    """Canvas personnalisé pour le calcul des pages et le pied de page."""
+    """Canvas personnalisé pour le calcul des pages et le pied de page PDF."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -149,10 +149,12 @@ class FacturationView(ft.Container):
         return self.page.width < 768 if self.page else False
 
     def _build_interface(self):
+        # 1. En-tête avec bouton retour
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    content=ft.Text("←", size=22, color="white", weight=ft.FontWeight.BOLD),
+                    icon=ft.icons.ARROW_BACK,
+                    icon_color="white",
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
                 ft.Text("📂 Factures & Devis", size=20, weight=ft.FontWeight.BOLD),
@@ -160,11 +162,10 @@ class FacturationView(ft.Container):
             alignment=ft.MainAxisAlignment.START,
         )
 
-        button_style = ft.ButtonStyle(
-            shape=ft.RoundedRectangleBorder(radius=8),
-        )
+        button_style = ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))
 
-        toolbar = ft.ResponsiveRow(
+        # 2. Boutons de création (50% de largeur chacun sur mobile)
+        creation_block = ft.ResponsiveRow(
             controls=[
                 ft.Column(
                     [
@@ -172,12 +173,12 @@ class FacturationView(ft.Container):
                             "➕ Nouveau Devis",
                             bgcolor=self.accent_color,
                             color="white",
-                            height=42,
+                            height=40,
                             style=button_style,
                             on_click=lambda e: self.app.navigate_to("NouveauDevis"),
                         )
                     ],
-                    col={"xs": 6, "sm": 6, "md": 3},
+                    col={"xs": 6, "sm": 6},
                 ),
                 ft.Column(
                     [
@@ -185,28 +186,29 @@ class FacturationView(ft.Container):
                             "➕ Nouvelle Facture",
                             bgcolor=self.accent_color,
                             color="white",
-                            height=42,
+                            height=40,
                             style=button_style,
                             on_click=lambda e: self.app.navigate_to(
                                 "NouvelleFacture"
                             ),
                         )
                     ],
-                    col={"xs": 6, "sm": 6, "md": 3},
+                    col={"xs": 6, "sm": 6},
                 ),
             ],
-            spacing=10,
+            spacing=8,
         )
 
+        # 3. Champ de recherche
         self.search_entry = ft.TextField(
             label="🔍 Rechercher (Numéro, client, statut...)",
             bgcolor="#1A1A1C",
-            height=45,
+            height=40,
             text_size=13,
             on_change=self._refresh_table,
-            expand=True,
         )
 
+        # Structure du tableau de données pour desktop
         self.table = ft.DataTable(
             columns=[
                 ft.DataColumn(ft.Text("Type", weight=ft.FontWeight.BOLD)),
@@ -221,33 +223,26 @@ class FacturationView(ft.Container):
             show_checkbox_column=False,
         )
 
+        # 4. Grille de boutons d'action (2 par ligne sur mobile `xs=6`, 4 par ligne sur PC `md=3`)
         def btn_grid(text, icon_name, color, action):
-            try:
-                icon_widget = ft.Icon(name=icon_name, size=16, color="white")
-            except Exception:
-                icon_widget = ft.Text("•", color="white")
-
             return ft.Column(
                 [
                     ft.ElevatedButton(
                         content=ft.Row(
                             [
-                                icon_widget,
+                                ft.Icon(name=icon_name, size=15, color="white"),
                                 ft.Text(text, size=11, color="white"),
                             ],
                             spacing=4,
                             alignment=ft.MainAxisAlignment.CENTER,
                         ),
                         bgcolor=color,
-                        height=42,
-                        style=ft.ButtonStyle(
-                            shape=ft.RoundedRectangleBorder(radius=8),
-                            padding=4,
-                        ),
+                        height=38,
+                        style=button_style,
                         on_click=action,
                     )
                 ],
-                col={"xs": 6, "sm": 6, "md": 3, "lg": 3},
+                col={"xs": 6, "sm": 4, "md": 3},
             )
 
         actions_grid = ft.ResponsiveRow(
@@ -289,20 +284,20 @@ class FacturationView(ft.Container):
                     self.supprimer_selectionne,
                 ),
             ],
-            spacing=8,
+            spacing=6,
         )
 
+        # Assemblage vertical sans scroll global pour éviter l'espace noir infini
         self.content = ft.Column(
             controls=[
                 header,
-                toolbar,
+                creation_block,
                 ft.Row([self.search_entry]),
                 self.display_container,
                 actions_grid,
             ],
-            spacing=12,
+            spacing=10,
             expand=True,
-            scroll=ft.ScrollMode.AUTO,
         )
 
     def _refresh_table(self, e=None):
@@ -351,10 +346,10 @@ class FacturationView(ft.Container):
                 expand=True,
             ),
             bgcolor="#141416",
-            border_radius=12,
+            border_radius=10,
             border=safe_border(1, "#2A2A2E"),
-            padding=10,
-            height=300,
+            padding=8,
+            expand=True,
         )
 
     def _render_mobile_cards(self, docs):
@@ -456,8 +451,10 @@ class FacturationView(ft.Container):
                 ft.Text("Aucun document trouvé.", color="#AEAEB2", size=13)
             )
 
-        self.display_container.content = ft.Column(
-            controls=cards_list, spacing=10, expand=True
+        self.display_container.content = ft.ListView(
+            controls=cards_list,
+            spacing=8,
+            expand=True,
         )
 
     def _select_card(self, key):
@@ -1119,7 +1116,7 @@ class FacturationView(ft.Container):
                             f_doc.get("total_ttc"),
                             f_doc.get("statut"),
                         ])
-            self.show_snack(f"CSV exporté dans Exports/historique_comptable.csv")
+            self.show_snack("CSV exporté dans Exports/historique_comptable.csv")
         except Exception as ex:
             self.show_snack(f"Erreur export CSV : {ex}", is_error=True)
 
