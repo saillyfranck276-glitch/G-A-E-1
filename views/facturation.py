@@ -81,6 +81,9 @@ class FacturationView(ft.Container):
 
   def __init__(self, app):
     super().__init__()
+    
+    self.csv_picker = ft.FilePicker(on_result=self._on_csv_export_result)
+
     try:
       self.app = app
       self.expand = True
@@ -94,8 +97,6 @@ class FacturationView(ft.Container):
 
       self.documents = {}
       self.selected_doc_key = None
-
-      self.csv_picker = ft.FilePicker(on_result=self._on_csv_export_result)
       self.display_container = ft.Container(expand=True)
 
       self._build_interface()
@@ -105,8 +106,12 @@ class FacturationView(ft.Container):
   def did_mount(self):
     try:
       if self.page:
+        if not hasattr(self, "csv_picker") or self.csv_picker is None:
+          self.csv_picker = ft.FilePicker(on_result=self._on_csv_export_result)
+        
         if self.csv_picker not in self.page.overlay:
           self.page.overlay.append(self.csv_picker)
+          
         self.page.on_resized = self._on_screen_resize
         self._refresh_table()
     except Exception as ex:
@@ -320,7 +325,7 @@ class FacturationView(ft.Container):
         border_radius=12,
         border=safe_border(1, "#2A2A2E"),
         padding=10,
-        min_height=300,
+        height=300,
         expand=True,
     )
 
@@ -1072,9 +1077,18 @@ class FacturationView(ft.Container):
     self.show_snack("Facture créée ! 🔄")
 
   def exporter_csv(self, e=None):
-    self.csv_picker.save_file(
-        file_name="historique_comptable.csv", allowed_extensions=["csv"]
-    )
+    try:
+      if not hasattr(self, "csv_picker") or self.csv_picker is None:
+        self.csv_picker = ft.FilePicker(on_result=self._on_csv_export_result)
+        if self.page and self.csv_picker not in self.page.overlay:
+          self.page.overlay.append(self.csv_picker)
+          self.page.update()
+
+      self.csv_picker.save_file(
+          file_name="historique_comptable.csv", allowed_extensions=["csv"]
+      )
+    except Exception as ex:
+      self.show_snack(f"Erreur export CSV : {ex}", is_error=True)
 
   def _on_csv_export_result(self, e: ft.FilePickerResultEvent):
     if e.path:
