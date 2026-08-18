@@ -1,8 +1,6 @@
 import csv
 from datetime import datetime
-import os
 from pathlib import Path
-import re
 import flet as ft
 
 # --- IMPORTS OPTIONNELS REPORTLAB ---
@@ -27,13 +25,13 @@ except ImportError:
 
 
 def safe_border(width=1, color="#2A2A32"):
-    """Bordure universelle sécurisée pour Serious Python / APK Android."""
+    """Bordure universelle sécurisée."""
     side = ft.BorderSide(width, color)
     return ft.Border(top=side, right=side, bottom=side, left=side)
 
 
 class NumberedCanvas(canvas.Canvas if REPORTLAB_AVAILABLE else object):
-    """Canvas personnalisé pour le calcul des pages et le pied de page PDF."""
+    """Canvas personnalisé pour la numérotation et le pied de page PDF."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -55,7 +53,6 @@ class NumberedCanvas(canvas.Canvas if REPORTLAB_AVAILABLE else object):
         self.saveState()
         self.setFont("Helvetica", 8)
         self.setFillColor(rl_colors.HexColor("#6B7280"))
-
         self.setStrokeColor(rl_colors.HexColor("#E5E7EB"))
         self.setLineWidth(0.5)
         self.line(35, 45, A4[0] - 35, 45)
@@ -83,7 +80,7 @@ class NumberedCanvas(canvas.Canvas if REPORTLAB_AVAILABLE else object):
 
 
 class FacturationView(ft.Container):
-    """Vue Flet pour la gestion des devis et factures."""
+    """Vue Flet complète pour la gestion des devis et factures."""
 
     def __init__(self, app):
         super().__init__()
@@ -104,6 +101,7 @@ class FacturationView(ft.Container):
                 self.accent_color = self.app.entreprise.get("accent_color", "#2B719E")
 
             self._build_interface()
+            self._refresh_table()
         except Exception as ex:
             self._render_error_ui(f"Erreur d'initialisation : {ex}")
 
@@ -149,12 +147,11 @@ class FacturationView(ft.Container):
         return self.page.width < 768 if self.page else False
 
     def _build_interface(self):
-        # En-tête avec bouton retour sécurisé
+        # En-tête sécurisé via content=ft.Icon(...)
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    icon="arrow_back",
-                    icon_color="white",
+                    content=ft.Icon("arrow_back", color="white"),
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
                 ft.Text("📂 Factures & Devis", size=20, weight="bold"),
@@ -188,9 +185,7 @@ class FacturationView(ft.Container):
                             color="white",
                             height=40,
                             style=button_style,
-                            on_click=lambda e: self.app.navigate_to(
-                                "NouvelleFacture"
-                            ),
+                            on_click=lambda e: self.app.navigate_to("NouvelleFacture"),
                         )
                     ],
                     col={"xs": 6, "sm": 6},
@@ -223,7 +218,7 @@ class FacturationView(ft.Container):
             show_checkbox_column=False,
         )
 
-        # Bouton avec icône positionnelle pour compatibilité toutes versions
+        # Helper bouton d'action universel
         def btn_grid(text, icon_name, color, action):
             return ft.Column(
                 [
@@ -245,49 +240,21 @@ class FacturationView(ft.Container):
                 col={"xs": 6, "sm": 4, "md": 3},
             )
 
+        # Grille complète avec les 8 boutons
         actions_grid = ft.ResponsiveRow(
             controls=[
-                btn_grid(
-                    "Voir PDF",
-                    "picture_as_pdf",
-                    "#2B719E",
-                    self.ouvrir_pdf_selectionne,
-                ),
-                btn_grid(
-                    "Générer PDF",
-                    "save_alt",
-                    "#8B5CF6",
-                    self.exporter_pdf_organise,
-                ),
-                btn_grid(
-                    "Modifier", "edit", "#F59E0B", self.modifier_selectionne
-                ),
-                btn_grid(
-                    "Marquer Payée", "euro", "#10B981", self.marquer_payee
-                ),
-                btn_grid(
-                    "URSSAF", "check_circle", "#16A34A", self.declarer_urssaf
-                ),
-                btn_grid(
-                    "Convertir Devis",
-                    "transform",
-                    "#0EA5E9",
-                    self.convertir_devis_en_facture,
-                ),
-                btn_grid(
-                    "Export CSV", "table_chart", "#4F46E5", self.exporter_csv
-                ),
-                btn_grid(
-                    "Supprimer",
-                    "delete",
-                    "#DC2626",
-                    self.supprimer_selectionne,
-                ),
+                btn_grid("Voir PDF", "picture_as_pdf", "#2B719E", self.ouvrir_pdf_selectionne),
+                btn_grid("Générer PDF", "save_alt", "#8B5CF6", self.exporter_pdf_organise),
+                btn_grid("Modifier", "edit", "#F59E0B", self.modifier_selectionne),
+                btn_grid("Marquer Payée", "euro", "#10B981", self.marquer_payee),
+                btn_grid("URSSAF", "check_circle", "#16A34A", self.declarer_urssaf),
+                btn_grid("Convertir Devis", "transform", "#0EA5E9", self.convertir_devis_en_facture),
+                btn_grid("Export CSV", "table_chart", "#4F46E5", self.exporter_csv),
+                btn_grid("Supprimer", "delete", "#DC2626", self.supprimer_selectionne),
             ],
             spacing=6,
         )
 
-        # Colonne globale sans scroll
         self.content = ft.Column(
             controls=[
                 header,
@@ -337,11 +304,16 @@ class FacturationView(ft.Container):
         for doc, type_doc in docs:
             self._insert_document_row(doc, type_doc)
 
+        if not docs:
+            self.display_container.content = ft.Container(
+                content=ft.Text("Aucun document trouvé.", color="#AEAEB2", size=13),
+                padding=15,
+            )
+            return
+
         self.display_container.content = ft.Container(
             content=ft.Column(
-                controls=[
-                    ft.Row(controls=[self.table], scroll="auto")
-                ],
+                controls=[ft.Row(controls=[self.table], scroll="auto")],
                 scroll="auto",
                 expand=True,
             ),
@@ -361,11 +333,7 @@ class FacturationView(ft.Container):
             self.documents[key] = doc
 
             client = doc.get("client", {})
-            nom = (
-                client.get("nom", "Inconnu")
-                if isinstance(client, dict)
-                else str(client)
-            )
+            nom = client.get("nom", "Inconnu") if isinstance(client, dict) else str(client)
             statut = doc.get("statut", "-")
             total_ttc = f"{float(doc.get('total_ttc', 0)):.2f} €"
             is_selected = self.selected_doc_key == key
@@ -394,27 +362,16 @@ class FacturationView(ft.Container):
                                         color="white",
                                     ),
                                     bgcolor=(
-                                        self.accent_color
-                                        if type_doc == "facture"
-                                        else "#8B5CF6"
+                                        self.accent_color if type_doc == "facture" else "#8B5CF6"
                                     ),
                                     padding=4,
                                     border_radius=4,
                                 ),
-                                ft.Text(
-                                    num,
-                                    weight="bold",
-                                    color="white",
-                                    size=14,
-                                ),
+                                ft.Text(num, weight="bold", color="white", size=14),
                                 ft.Text(
                                     total_ttc,
                                     weight="bold",
-                                    color=(
-                                        "#10B981"
-                                        if type_doc == "facture"
-                                        else "#2B719E"
-                                    ),
+                                    color="#10B981" if type_doc == "facture" else "#2B719E",
                                     size=14,
                                 ),
                             ],
@@ -426,11 +383,7 @@ class FacturationView(ft.Container):
                                 ft.Text(
                                     f"Statut : {statut}",
                                     size=11,
-                                    color=(
-                                        "#34D399"
-                                        if "Payée" in statut
-                                        else "#F59E0B"
-                                    ),
+                                    color="#34D399" if "Payée" in statut else "#F59E0B",
                                 ),
                                 ft.Text(
                                     f"URSSAF : {'Oui' if doc.get('urssaf_declare') else 'Non'}",
@@ -447,9 +400,7 @@ class FacturationView(ft.Container):
             cards_list.append(card_content)
 
         if not cards_list:
-            cards_list.append(
-                ft.Text("Aucun document trouvé.", color="#AEAEB2", size=13)
-            )
+            cards_list.append(ft.Text("Aucun document trouvé.", color="#AEAEB2", size=13))
 
         self.display_container.content = ft.ListView(
             controls=cards_list,
@@ -466,15 +417,9 @@ class FacturationView(ft.Container):
             return True
         num = str(doc.get("numero", "")).lower()
         client = doc.get("client", {})
-        nom = (
-            client.get("nom", "").lower()
-            if isinstance(client, dict)
-            else str(client).lower()
-        )
+        nom = client.get("nom", "").lower() if isinstance(client, dict) else str(client).lower()
         statut = str(doc.get("statut", "")).lower()
-        return (
-            query in num or query in nom or query in statut or query in type_doc
-        )
+        return query in num or query in nom or query in statut or query in type_doc
 
     def _insert_document_row(self, doc, type_doc):
         num = str(doc.get("numero", ""))
@@ -482,11 +427,7 @@ class FacturationView(ft.Container):
         self.documents[key] = doc
 
         client = doc.get("client", {})
-        nom = (
-            client.get("nom", "Inconnu")
-            if isinstance(client, dict)
-            else str(client)
-        )
+        nom = client.get("nom", "Inconnu") if isinstance(client, dict) else str(client)
         statut = doc.get("statut", "-")
         if statut == "Payée" and doc.get("date_paiement"):
             statut = f"Payée ({doc.get('date_paiement')})"
@@ -521,26 +462,18 @@ class FacturationView(ft.Container):
             )
 
         row.cells = [
-            create_clickable_cell(
-                type_doc.capitalize(), weight="w500"
-            ),
+            create_clickable_cell(type_doc.capitalize(), weight="w500"),
             create_clickable_cell(num),
             create_clickable_cell(nom),
-            create_clickable_cell(
-                total_ttc, color="#10B981" if type_doc == "facture" else "#2B719E"
-            ),
+            create_clickable_cell(total_ttc, color="#10B981" if type_doc == "facture" else "#2B719E"),
             create_clickable_cell(statut),
-            create_clickable_cell(
-                urssaf, color="#10B981" if urssaf == "Oui" else "#636366"
-            ),
+            create_clickable_cell(urssaf, color="#10B981" if urssaf == "Oui" else "#636366"),
         ]
         self.table.rows.append(row)
 
     def _selected_document(self):
         if not self.selected_doc_key:
-            self.show_snack(
-                "Veuillez d'abord sélectionner un document.", is_error=True
-            )
+            self.show_snack("Veuillez d'abord sélectionner un document.", is_error=True)
             return None, None
         type_doc, num_doc = self.selected_doc_key
         return type_doc, self.documents.get((type_doc, num_doc))
@@ -567,9 +500,7 @@ class FacturationView(ft.Container):
         if hasattr(self.app, "data_dir") and self.app.data_dir:
             base_dirs.append(Path(self.app.data_dir))
 
-        base_dirs.extend(
-            [Path.cwd(), Path(__file__).parent, Path(__file__).parent / "assets"]
-        )
+        base_dirs.extend([Path.cwd(), Path(__file__).parent, Path(__file__).parent / "assets"])
 
         for d in base_dirs:
             t1 = d / p_init.name
@@ -582,9 +513,7 @@ class FacturationView(ft.Container):
 
     def exporter_pdf_direct(self, type_doc, doc, ouvrir_apres=False):
         if not REPORTLAB_AVAILABLE:
-            return self.show_snack(
-                "ReportLab n'est pas disponible pour générer des PDF.", is_error=True
-            )
+            return self.show_snack("ReportLab n'est pas disponible pour générer des PDF.", is_error=True)
 
         date_str = doc.get("date_creation", datetime.now().strftime("%d/%m/%Y"))
         try:
@@ -717,9 +646,7 @@ class FacturationView(ft.Container):
             txt_entreprise += f"SIRET : {ent_siret}"
 
         entreprise_elements = []
-        logo_path = self._trouver_chemin_valide(
-            ent.get("logo_path", ent.get("logo", ""))
-        )
+        logo_path = self._trouver_chemin_valide(ent.get("logo_path", ent.get("logo", "")))
         if logo_path:
             try:
                 entreprise_elements.append(Image(logo_path, width=110, height=45))
@@ -730,9 +657,7 @@ class FacturationView(ft.Container):
 
         num = doc.get("numero", "INCONNU")
         date_crea = doc.get("date_creation", "-")
-        txt_metadonnees = (
-            f"<font size=20 color='{self.accent_color}'><b>{label_doc}</b></font><br/><br/>"
-        )
+        txt_metadonnees = f"<font size=20 color='{self.accent_color}'><b>{label_doc}</b></font><br/><br/>"
         txt_metadonnees += f"<b>N° :</b> {num}<br/>"
         txt_metadonnees += f"<b>Date :</b> {date_crea}<br/>"
 
@@ -740,31 +665,15 @@ class FacturationView(ft.Container):
             [[entreprise_elements, Paragraph(txt_metadonnees, style_doc_meta)]],
             colWidths=[260, 265],
         )
-        header_table.setStyle(
-            TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")])
-        )
+        header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
         story.append(header_table)
         story.append(Spacer(1, 25))
 
         c_info = doc.get("client", {})
-        nom_c = (
-            c_info.get("nom", "Inconnu") if isinstance(c_info, dict) else str(c_info)
-        )
-        prenom_c = (
-            c_info.get("prenom", c_info.get("prénom", ""))
-            if isinstance(c_info, dict)
-            else ""
-        )
-        adr_c = (
-            c_info.get("adresse", "Adresse non renseignée")
-            if isinstance(c_info, dict)
-            else ""
-        )
-        cp_c = (
-            c_info.get("code_postal", c_info.get("cp", ""))
-            if isinstance(c_info, dict)
-            else ""
-        )
+        nom_c = c_info.get("nom", "Inconnu") if isinstance(c_info, dict) else str(c_info)
+        prenom_c = c_info.get("prenom", c_info.get("prénom", "")) if isinstance(c_info, dict) else ""
+        adr_c = c_info.get("adresse", "Adresse non renseignée") if isinstance(c_info, dict) else ""
+        cp_c = c_info.get("code_postal", c_info.get("cp", "")) if isinstance(c_info, dict) else ""
         ville_c = c_info.get("ville", "") if isinstance(c_info, dict) else ""
         tel_c = c_info.get("telephone", "") if isinstance(c_info, dict) else ""
 
@@ -777,9 +686,7 @@ class FacturationView(ft.Container):
         if tel_c:
             txt_client += f"<br/>Tel : {tel_c}"
 
-        client_table = Table(
-            [["", Paragraph(txt_client, style_client_body)]], colWidths=[260, 265]
-        )
+        client_table = Table([["", Paragraph(txt_client, style_client_body)]], colWidths=[260, 265])
         client_table.setStyle(
             TableStyle([
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -792,45 +699,10 @@ class FacturationView(ft.Container):
         story.append(Spacer(1, 30))
 
         headers = [
-            Paragraph(
-                "<b>Désignation</b>",
-                ParagraphStyle(
-                    "H1",
-                    fontName="Helvetica-Bold",
-                    fontSize=9,
-                    textColor=rl_colors.white,
-                ),
-            ),
-            Paragraph(
-                "<b>Qté</b>",
-                ParagraphStyle(
-                    "H2",
-                    fontName="Helvetica-Bold",
-                    fontSize=9,
-                    textColor=rl_colors.white,
-                    alignment=2,
-                ),
-            ),
-            Paragraph(
-                "<b>Prix U. HT</b>",
-                ParagraphStyle(
-                    "H3",
-                    fontName="Helvetica-Bold",
-                    fontSize=9,
-                    textColor=rl_colors.white,
-                    alignment=2,
-                ),
-            ),
-            Paragraph(
-                "<b>Total HT</b>",
-                ParagraphStyle(
-                    "H4",
-                    fontName="Helvetica-Bold",
-                    fontSize=9,
-                    textColor=rl_colors.white,
-                    alignment=2,
-                ),
-            ),
+            Paragraph("<b>Désignation</b>", ParagraphStyle("H1", fontName="Helvetica-Bold", fontSize=9, textColor=rl_colors.white)),
+            Paragraph("<b>Qté</b>", ParagraphStyle("H2", fontName="Helvetica-Bold", fontSize=9, textColor=rl_colors.white, alignment=2)),
+            Paragraph("<b>Prix U. HT</b>", ParagraphStyle("H3", fontName="Helvetica-Bold", fontSize=9, textColor=rl_colors.white, alignment=2)),
+            Paragraph("<b>Total HT</b>", ParagraphStyle("H4", fontName="Helvetica-Bold", fontSize=9, textColor=rl_colors.white, alignment=2)),
         ]
         table_data = [headers]
 
@@ -851,24 +723,9 @@ class FacturationView(ft.Container):
         tot_tva = f"{float(doc.get('tva', doc.get('montant_tva', 0))):.2f} €"
         tot_ttc = f"{float(doc.get('total_ttc', doc.get('montant_ttc', 0))):.2f} €"
 
-        table_data.append([
-            "",
-            "",
-            Paragraph("Total HT", cell_right_bold),
-            Paragraph(tot_ht, cell_right),
-        ])
-        table_data.append([
-            "",
-            "",
-            Paragraph("TVA", cell_right_bold),
-            Paragraph(tot_tva, cell_right),
-        ])
-        table_data.append([
-            "",
-            "",
-            Paragraph("Total TTC", cell_right_bold),
-            Paragraph(tot_ttc, cell_right_bold),
-        ])
+        table_data.append(["", "", Paragraph("Total HT", cell_right_bold), Paragraph(tot_ht, cell_right)])
+        table_data.append(["", "", Paragraph("TVA", cell_right_bold), Paragraph(tot_tva, cell_right)])
+        table_data.append(["", "", Paragraph("Total TTC", cell_right_bold), Paragraph(tot_ttc, cell_right_bold)])
 
         t_lines = Table(table_data, colWidths=[285, 40, 100, 100])
         ts = TableStyle([
@@ -879,16 +736,7 @@ class FacturationView(ft.Container):
         ])
 
         for i in range(1, len(lines) + 1):
-            ts.add(
-                "BACKGROUND",
-                (0, i),
-                (-1, i),
-                (
-                    rl_colors.HexColor("#FFFFFF")
-                    if i % 2 != 0
-                    else rl_colors.HexColor("#F9FAFB")
-                ),
-            )
+            ts.add("BACKGROUND", (0, i), (-1, i), rl_colors.HexColor("#FFFFFF") if i % 2 != 0 else rl_colors.HexColor("#F9FAFB"))
             ts.add("LINEBELOW", (0, i), (-1, i), 0.5, rl_colors.HexColor("#F3F4F6"))
 
         ts.add("LINEABOVE", (2, -3), (3, -3), 1, rl_colors.HexColor("#E5E7EB"))
@@ -901,23 +749,14 @@ class FacturationView(ft.Container):
 
         if type_doc.lower() in ["devis", "bc"]:
             signature_elements.append(
-                Paragraph(
-                    "<b>Bon pour accord</b><br/><font size=7 color='#6B7280'>Mention"
-                    " 'Lu et approuvé' obligatoire :</font>",
-                    cell_text,
-                )
+                Paragraph("<b>Bon pour accord</b><br/><font size=7 color='#6B7280'>Mention 'Lu et approuvé' obligatoire :</font>", cell_text)
             )
         else:
-            signature_elements.append(
-                Paragraph("<b>Cachet &amp; Signature</b>", cell_text)
-            )
+            signature_elements.append(Paragraph("<b>Cachet &amp; Signature</b>", cell_text))
 
         signature_elements.append(Spacer(1, 5))
 
-        sig_raw_path = doc.get(
-            "signature_path",
-            doc.get("signature_img_path", ent.get("signature_pad", "")),
-        )
+        sig_raw_path = doc.get("signature_path", doc.get("signature_img_path", ent.get("signature_pad", "")))
         sig_img_path = self._trouver_chemin_valide(sig_raw_path)
 
         if sig_img_path:
@@ -932,8 +771,7 @@ class FacturationView(ft.Container):
         signature_elements.append(Spacer(1, 4))
         signature_elements.append(
             Paragraph(
-                f"<font size=7.5 color='#1F2937'><b>Signé électroniquement le"
-                f" {moment_signature}</b></font>",
+                f"<font size=7.5 color='#1F2937'><b>Signé électroniquement le {moment_signature}</b></font>",
                 ParagraphStyle("SigSub", fontName="Helvetica-Bold"),
             )
         )
@@ -979,14 +817,10 @@ class FacturationView(ft.Container):
             from views.create_document import CreateDocumentView
 
             if hasattr(self.app, "content_area"):
-                self.app.content_area.content = CreateDocumentView(
-                    app=self.app, doc_type=type_doc, doc_to_edit=doc
-                )
+                self.app.content_area.content = CreateDocumentView(app=self.app, doc_type=type_doc, doc_to_edit=doc)
             self.safe_update()
         except Exception as ex:
-            self.show_snack(
-                f"Impossible de charger le formulaire d'édition : {ex}", is_error=True
-            )
+            self.show_snack(f"Impossible de charger le formulaire d'édition : {ex}", is_error=True)
 
     def supprimer_selectionne(self, e=None):
         type_doc, doc = self._selected_document()
@@ -1013,15 +847,8 @@ class FacturationView(ft.Container):
             title=ft.Text("🚨 Suppression"),
             content=ft.Text(f"Supprimer le {type_doc} n°{doc.get('numero', '')} ?"),
             actions=[
-                ft.TextButton(
-                    "Annuler", on_click=lambda _: confirmation_action(False)
-                ),
-                ft.ElevatedButton(
-                    "Supprimer",
-                    bgcolor="#B91C1C",
-                    color="white",
-                    on_click=lambda _: confirmation_action(True),
-                ),
+                ft.TextButton("Annuler", on_click=lambda _: confirmation_action(False)),
+                ft.ElevatedButton("Supprimer", bgcolor="#B91C1C", color="white", on_click=lambda _: confirmation_action(True)),
             ],
         )
         if self.page:
@@ -1104,11 +931,7 @@ class FacturationView(ft.Container):
                 if isinstance(factures_list, list):
                     for f_doc in factures_list:
                         client_val = f_doc.get("client", {})
-                        nom_client = (
-                            client_val.get("nom")
-                            if isinstance(client_val, dict)
-                            else str(client_val)
-                        )
+                        nom_client = client_val.get("nom") if isinstance(client_val, dict) else str(client_val)
                         writer.writerow([
                             "Facture",
                             f_doc.get("numero"),
