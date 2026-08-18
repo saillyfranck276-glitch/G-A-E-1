@@ -153,7 +153,7 @@ class FacturationView(ft.Container):
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    icon=ft.icons.ARROW_BACK,
+                    icon="arrow_back",
                     icon_color="white",
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
