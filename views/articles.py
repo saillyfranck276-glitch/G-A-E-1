@@ -59,7 +59,9 @@ class ArticlesView(ft.Container):
             on_change=self.filtrer_articles,
         )
 
-        self.list_column = ft.Column(spacing=10, expand=True)
+        self.list_column = ft.Column(
+            spacing=10, scroll=ft.ScrollMode.AUTO, expand=True
+        )
         self.view_container = ft.Container(expand=True)
         self.content = ft.Column([self.view_container], expand=True)
 
@@ -74,7 +76,6 @@ class ArticlesView(ft.Container):
         self.load_articles_list()
 
         self.view_container.content = ft.Column(
-            scroll=ft.ScrollMode.AUTO,
             spacing=15,
             expand=True,
             controls=[
@@ -107,7 +108,7 @@ class ArticlesView(ft.Container):
             ],
         )
         if self.page:
-            self.update()
+            self.page.update()
 
     def afficher_ecran_formulaire(self, index_article=None):
         self.current_editing_index = index_article
@@ -125,6 +126,7 @@ class ArticlesView(ft.Container):
         self.view_container.content = ft.Column(
             scroll=ft.ScrollMode.AUTO,
             spacing=20,
+            expand=True,
             controls=[
                 ft.Row(
                     [
@@ -197,7 +199,7 @@ class ArticlesView(ft.Container):
             ],
         )
         if self.page:
-            self.update()
+            self.page.update()
 
     def creer_section_card(self, titre, composants):
         return ft.Container(
@@ -219,14 +221,15 @@ class ArticlesView(ft.Container):
     # ============================================================
 
     def load_articles_list(self, filtre_texte=""):
+        self.articles = getattr(self.app, "articles", [])
         self.list_column.controls.clear()
         filtre_lower = filtre_texte.lower().strip()
 
         articles_filtrés = [
             (idx, a)
             for idx, a in enumerate(self.articles)
-            if filtre_lower in a.get("designation", "").lower()
-            or filtre_lower in a.get("reference", "").lower()
+            if filtre_lower in str(a.get("designation", "")).lower()
+            or filtre_lower in str(a.get("reference", "")).lower()
         ]
 
         if not articles_filtrés:
@@ -408,6 +411,12 @@ class ArticlesView(ft.Container):
 
     def supprimer_fiche(self, index):
         page_obj = self.page or getattr(self.app, "page", None)
+        if not page_obj:
+            return
+
+        def fermer_dialog(e):
+            dialog_confirmation.open = False
+            page_obj.update()
 
         def confirmer_suppression(e):
             if index < len(self.articles):
@@ -415,8 +424,7 @@ class ArticlesView(ft.Container):
                 if hasattr(self.app, "save_data"):
                     self.app.save_data()
             dialog_confirmation.open = False
-            if page_obj:
-                page_obj.update()
+            page_obj.update()
             self.afficher_ecran_liste()
 
         dialog_confirmation = ft.AlertDialog(
@@ -425,13 +433,7 @@ class ArticlesView(ft.Container):
                 f"Supprimer l'article '{self.articles[index].get('designation')}' ?"
             ),
             actions=[
-                ft.TextButton(
-                    "Annuler",
-                    on_click=lambda e: setattr(
-                        dialog_confirmation, "open", False
-                    )
-                    or page_obj.update(),
-                ),
+                ft.TextButton("Annuler", on_click=fermer_dialog),
                 ft.ElevatedButton(
                     "Supprimer",
                     bgcolor="#B91C1C",
@@ -440,11 +442,9 @@ class ArticlesView(ft.Container):
                 ),
             ],
         )
-        if page_obj:
-            if dialog_confirmation not in page_obj.overlay:
-                page_obj.overlay.append(dialog_confirmation)
-            dialog_confirmation.open = True
-            page_obj.update()
+        page_obj.dialog = dialog_confirmation
+        dialog_confirmation.open = True
+        page_obj.update()
 
     # ============================================================
     # ⚙️ FONCTIONS AUXILIAIRES
@@ -454,7 +454,7 @@ class ArticlesView(ft.Container):
         txt = self.input_recherche.value or ""
         self.load_articles_list(filtre_texte=txt)
         if self.page:
-            self.list_column.update()
+            self.page.update()
 
     def pre_remplir_formulaire(self, index):
         a = self.articles[index]
