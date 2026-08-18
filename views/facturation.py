@@ -92,7 +92,6 @@ class FacturationView(ft.Container):
         self.expand = True
         self.padding = 10
         self.accent_color = "#2B719E"
-        self.csv_picker = None
 
         self.documents = {}
         self.selected_doc_key = None
@@ -111,16 +110,6 @@ class FacturationView(ft.Container):
     def did_mount(self):
         try:
             if self.page:
-                try:
-                    if not self.csv_picker:
-                        self.csv_picker = ft.FilePicker()
-                        self.csv_picker.on_result = self._on_csv_export_result
-                    if self.csv_picker not in self.page.overlay:
-                        self.page.overlay.append(self.csv_picker)
-                except Exception as picker_err:
-                    print(f"FilePicker non supporté : {picker_err}")
-                    self.csv_picker = None
-
                 self.page.on_resized = self._on_screen_resize
                 self._refresh_table()
         except Exception as ex:
@@ -163,8 +152,7 @@ class FacturationView(ft.Container):
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    icon="arrow_back",
-                    icon_color="white",
+                    content=ft.Text("←", size=22, color="white", weight=ft.FontWeight.BOLD),
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
                 ft.Text("📂 Factures & Devis", size=20, weight=ft.FontWeight.BOLD),
@@ -234,22 +222,27 @@ class FacturationView(ft.Container):
         )
 
         def btn_grid(text, icon_name, color, action):
+            try:
+                icon_widget = ft.Icon(name=icon_name, size=16, color="white")
+            except Exception:
+                icon_widget = ft.Text("•", color="white")
+
             return ft.Column(
                 [
                     ft.ElevatedButton(
                         content=ft.Row(
                             [
-                                ft.Icon(icon_name, size=16, color="white"),
-                                ft.Text(text, size=12, color="white"),
+                                icon_widget,
+                                ft.Text(text, size=11, color="white"),
                             ],
-                            spacing=6,
+                            spacing=4,
                             alignment=ft.MainAxisAlignment.CENTER,
                         ),
                         bgcolor=color,
                         height=42,
                         style=ft.ButtonStyle(
                             shape=ft.RoundedRectangleBorder(radius=8),
-                            padding=8,  # Remplace ft.padding.only(...)
+                            padding=4,
                         ),
                         on_click=action,
                     )
@@ -410,7 +403,7 @@ class FacturationView(ft.Container):
                                         if type_doc == "facture"
                                         else "#8B5CF6"
                                     ),
-                                    padding=4,  # Remplace ft.padding.only(...)
+                                    padding=4,
                                     border_radius=4,
                                 ),
                                 ft.Text(
@@ -980,33 +973,6 @@ class FacturationView(ft.Container):
         canvas_maker._entreprise_mentions = mentions_text
         doc_pdf.build(story, canvasmaker=canvas_maker)
 
-        pfx_path = ent.get("signature_pfx_path")
-        pfx_password = ent.get("signature_pfx_password")
-        if pfx_path and os.path.exists(pfx_path):
-            self._apply_invisible_signature(file_path, pfx_path, pfx_password)
-
-    def _apply_invisible_signature(self, file_path, pfx_path, pfx_password):
-        try:
-            from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
-            from pyhanko.sign import fields, sign_pdf
-            from pyhanko.sign.signer import SimpleSigner
-
-            password_bytes = pfx_password.encode("utf-8") if pfx_password else None
-            signer = SimpleSigner.load_pkcs12(pfx_path, passphrase=password_bytes)
-
-            with open(file_path, "rb+") as f:
-                w = IncrementalPdfFileWriter(f)
-                fields.append_signature_field(
-                    w,
-                    sig_field_spec=fields.SigFieldSpec(
-                        sig_field_name="SignatureInvisible"
-                    ),
-                )
-                meta = sign_pdf.PdfSignatureMetadata(field_name="SignatureInvisible")
-                sign_pdf.sign_pdf(w, meta, signer=signer, output=f)
-        except Exception:
-            pass
-
     def modifier_selectionne(self, e=None):
         type_doc, doc = self._selected_document()
         if not doc:
@@ -1125,42 +1091,37 @@ class FacturationView(ft.Container):
         self.show_snack("Facture créée ! 🔄")
 
     def exporter_csv(self, e=None):
-        if not self.csv_picker:
-            return self.show_snack("Export CSV non disponible sur cette plateforme.", is_error=True)
         try:
-            self.csv_picker.save_file(
-                file_name="historique_comptable.csv", allowed_extensions=["csv"]
-            )
+            if hasattr(self.app, "data_dir") and self.app.data_dir:
+                export_dir = Path(self.app.data_dir) / "Exports"
+            else:
+                export_dir = Path.cwd() / "Exports"
+
+            export_dir.mkdir(parents=True, exist_ok=True)
+            csv_path = export_dir / "historique_comptable.csv"
+
+            with open(csv_path, mode="w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f, delimiter=";")
+                writer.writerow(["Type", "Numéro", "Client", "Total TTC", "Statut"])
+                factures_list = getattr(self.app, "factures", [])
+                if isinstance(factures_list, list):
+                    for f_doc in factures_list:
+                        client_val = f_doc.get("client", {})
+                        nom_client = (
+                            client_val.get("nom")
+                            if isinstance(client_val, dict)
+                            else str(client_val)
+                        )
+                        writer.writerow([
+                            "Facture",
+                            f_doc.get("numero"),
+                            nom_client,
+                            f_doc.get("total_ttc"),
+                            f_doc.get("statut"),
+                        ])
+            self.show_snack(f"CSV exporté dans Exports/historique_comptable.csv")
         except Exception as ex:
             self.show_snack(f"Erreur export CSV : {ex}", is_error=True)
-
-    def _on_csv_export_result(self, e: ft.FilePickerResultEvent):
-        if e.path:
-            try:
-                with open(e.path, mode="w", newline="", encoding="utf-8-sig") as f:
-                    writer = csv.writer(f, delimiter=";")
-                    writer.writerow(
-                        ["Type", "Numéro", "Client", "Total TTC", "Statut"]
-                    )
-                    factures_list = getattr(self.app, "factures", [])
-                    if isinstance(factures_list, list):
-                        for f_doc in factures_list:
-                            client_val = f_doc.get("client", {})
-                            nom_client = (
-                                client_val.get("nom")
-                                if isinstance(client_val, dict)
-                                else str(client_val)
-                            )
-                            writer.writerow([
-                                "Facture",
-                                f_doc.get("numero"),
-                                nom_client,
-                                f_doc.get("total_ttc"),
-                                f_doc.get("statut"),
-                            ])
-                self.show_snack("Export CSV réussi ! ✔")
-            except Exception as ex:
-                self.show_snack(f"Erreur d'export CSV : {ex}", is_error=True)
 
     def show_snack(self, message, is_error=False):
         if self.page:
