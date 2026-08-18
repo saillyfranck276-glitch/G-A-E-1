@@ -91,7 +91,7 @@ class ClientsView(ft.Container):
             form_controls.append(entry)
 
         self.btn_save = ft.ElevatedButton(
-            text="💾 Enregistrer",
+            content=ft.Text("💾 Enregistrer"),
             bgcolor="#15803D",
             color="white",
             height=38,
@@ -99,7 +99,7 @@ class ClientsView(ft.Container):
             on_click=lambda e: self.valider_client()
         )
         self.btn_cancel = ft.OutlinedButton(
-            text="🔄 Réinitialiser",
+            content=ft.Text("🔄 Réinitialiser"),
             height=38,
             style=ft.ButtonStyle(color="white", shape=ft.RoundedRectangleBorder(radius=6)),
             on_click=lambda e: self.vider_champs()
@@ -302,7 +302,7 @@ class ClientsView(ft.Container):
         )
 
         btn_add = ft.ElevatedButton(
-            text="➕ Joindre PDF",
+            content=ft.Text("➕ Joindre PDF"),
             bgcolor=self.accent_color,
             color="white",
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=6)),
@@ -481,7 +481,12 @@ class ClientsView(ft.Container):
         self.editing_idx = idx
         self.lbl_form_title.value = f"✏️ Modifier le client #{idx + 1}"
         self.lbl_form_title.color = "#C2410C"
-        self.btn_save.text = "💾 Appliquer"
+        
+        if hasattr(self.btn_save.content, "value"):
+            self.btn_save.content.value = "💾 Appliquer"
+        else:
+            self.btn_save.content = ft.Text("💾 Appliquer")
+            
         self.btn_save.bgcolor = "#C2410C"
 
         for key in self.fields:
@@ -494,7 +499,12 @@ class ClientsView(ft.Container):
         self.editing_idx = None
         self.lbl_form_title.value = "📝 Ajouter un nouveau client"
         self.lbl_form_title.color = self.accent_color
-        self.btn_save.text = "💾 Enregistrer"
+
+        if hasattr(self.btn_save.content, "value"):
+            self.btn_save.content.value = "💾 Enregistrer"
+        else:
+            self.btn_save.content = ft.Text("💾 Enregistrer")
+
         self.btn_save.bgcolor = "#15803D"
 
         for key in self.fields:
@@ -588,8 +598,8 @@ class ClientsView(ft.Container):
             title=ft.Text(title),
             content=ft.Text(message),
             actions=[
-                ft.TextButton("Annuler", on_click=close_dialog),
-                ft.TextButton("Confirmer", on_click=confirm_action, style=ft.ButtonStyle(color="#EF4444")),
+                ft.TextButton(content=ft.Text("Annuler"), on_click=close_dialog),
+                ft.TextButton(content=ft.Text("Confirmer"), on_click=confirm_action, style=ft.ButtonStyle(color="#EF4444")),
             ],
         )
         self._ouvrir_dialogue(dialog)
