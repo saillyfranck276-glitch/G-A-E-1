@@ -24,7 +24,7 @@ except ImportError:
     pass
 
 
-def safe_border(width=1, color="#2A2A32"):
+def safe_border(width=1, color=ft.colors.GREY_800):
     """Bordure universelle sécurisée."""
     side = ft.BorderSide(width, color)
     return ft.Border(top=side, right=side, bottom=side, left=side)
@@ -115,7 +115,10 @@ class FacturationView(ft.Container):
 
     def safe_update(self):
         try:
-            if self.page:
+            page_obj = self.page or getattr(self.app, "page", None)
+            if page_obj:
+                page_obj.update()
+            else:
                 self.update()
         except Exception:
             pass
@@ -125,15 +128,15 @@ class FacturationView(ft.Container):
             padding=15,
             bgcolor="#3f1212",
             border_radius=10,
-            border=safe_border(1, "#B91C1C"),
+            border=safe_border(1, ft.colors.RED_700),
             content=ft.Column(
                 [
                     ft.Text(
                         "⚠️ Erreur dans la Facturation",
-                        color="#FCA5A5",
-                        weight="bold",
+                        color=ft.colors.RED_300,
+                        weight=ft.FontWeight.BOLD,
                     ),
-                    ft.Text(error_msg, color="white", size=11, selectable=True),
+                    ft.Text(error_msg, color=ft.colors.WHITE, size=11, selectable=True),
                 ],
                 spacing=5,
             ),
@@ -147,21 +150,20 @@ class FacturationView(ft.Container):
         return self.page.width < 768 if self.page else False
 
     def _build_interface(self):
-        # En-tête sécurisé via content=ft.Icon(...)
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    content=ft.Icon("arrow_back", color="white"),
+                    icon=ft.icons.ARROW_BACK,
+                    icon_color=ft.colors.WHITE,
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
-                ft.Text("📂 Factures & Devis", size=20, weight="bold"),
+                ft.Text("📂 Factures & Devis", size=20, weight=ft.FontWeight.BOLD),
             ],
-            alignment="start",
+            alignment=ft.MainAxisAlignment.START,
         )
 
         button_style = ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))
 
-        # Boutons de création
         creation_block = ft.ResponsiveRow(
             controls=[
                 ft.Column(
@@ -169,7 +171,7 @@ class FacturationView(ft.Container):
                         ft.ElevatedButton(
                             "➕ Nouveau Devis",
                             bgcolor=self.accent_color,
-                            color="white",
+                            color=ft.colors.WHITE,
                             height=40,
                             style=button_style,
                             on_click=lambda e: self.app.navigate_to("NouveauDevis"),
@@ -182,7 +184,7 @@ class FacturationView(ft.Container):
                         ft.ElevatedButton(
                             "➕ Nouvelle Facture",
                             bgcolor=self.accent_color,
-                            color="white",
+                            color=ft.colors.WHITE,
                             height=40,
                             style=button_style,
                             on_click=lambda e: self.app.navigate_to("NouvelleFacture"),
@@ -194,7 +196,6 @@ class FacturationView(ft.Container):
             spacing=8,
         )
 
-        # Champ de recherche
         self.search_entry = ft.TextField(
             label="🔍 Rechercher (Numéro, client, statut...)",
             bgcolor="#1A1A1C",
@@ -203,33 +204,31 @@ class FacturationView(ft.Container):
             on_change=self._refresh_table,
         )
 
-        # Tableau Desktop
         self.table = ft.DataTable(
             columns=[
-                ft.DataColumn(ft.Text("Type", weight="bold")),
-                ft.DataColumn(ft.Text("Numéro", weight="bold")),
-                ft.DataColumn(ft.Text("Client", weight="bold")),
-                ft.DataColumn(ft.Text("Total TTC", weight="bold")),
-                ft.DataColumn(ft.Text("Statut", weight="bold")),
-                ft.DataColumn(ft.Text("URSSAF", weight="bold")),
+                ft.DataColumn(ft.Text("Type", weight=ft.FontWeight.BOLD)),
+                ft.DataColumn(ft.Text("Numéro", weight=ft.FontWeight.BOLD)),
+                ft.DataColumn(ft.Text("Client", weight=ft.FontWeight.BOLD)),
+                ft.DataColumn(ft.Text("Total TTC", weight=ft.FontWeight.BOLD)),
+                ft.DataColumn(ft.Text("Statut", weight=ft.FontWeight.BOLD)),
+                ft.DataColumn(ft.Text("URSSAF", weight=ft.FontWeight.BOLD)),
             ],
             rows=[],
             heading_row_color="#242426",
             show_checkbox_column=False,
         )
 
-        # Helper bouton d'action universel
         def btn_grid(text, icon_name, color, action):
             return ft.Column(
                 [
                     ft.ElevatedButton(
                         content=ft.Row(
                             [
-                                ft.Icon(icon_name, size=15, color="white"),
-                                ft.Text(text, size=11, color="white"),
+                                ft.Icon(icon_name, size=15, color=ft.colors.WHITE),
+                                ft.Text(text, size=11, color=ft.colors.WHITE),
                             ],
                             spacing=4,
-                            alignment="center",
+                            alignment=ft.MainAxisAlignment.CENTER,
                         ),
                         bgcolor=color,
                         height=38,
@@ -240,17 +239,16 @@ class FacturationView(ft.Container):
                 col={"xs": 6, "sm": 4, "md": 3},
             )
 
-        # Grille complète avec les 8 boutons
         actions_grid = ft.ResponsiveRow(
             controls=[
-                btn_grid("Voir PDF", "picture_as_pdf", "#2B719E", self.ouvrir_pdf_selectionne),
-                btn_grid("Générer PDF", "save_alt", "#8B5CF6", self.exporter_pdf_organise),
-                btn_grid("Modifier", "edit", "#F59E0B", self.modifier_selectionne),
-                btn_grid("Marquer Payée", "euro", "#10B981", self.marquer_payee),
-                btn_grid("URSSAF", "check_circle", "#16A34A", self.declarer_urssaf),
-                btn_grid("Convertir Devis", "transform", "#0EA5E9", self.convertir_devis_en_facture),
-                btn_grid("Export CSV", "table_chart", "#4F46E5", self.exporter_csv),
-                btn_grid("Supprimer", "delete", "#DC2626", self.supprimer_selectionne),
+                btn_grid("Voir PDF", ft.icons.PICTURE_AS_PDF, "#2B719E", self.ouvrir_pdf_selectionne),
+                btn_grid("Générer PDF", ft.icons.SAVE_ALT, "#8B5CF6", self.exporter_pdf_organise),
+                btn_grid("Modifier", ft.icons.EDIT, "#F59E0B", self.modifier_selectionne),
+                btn_grid("Marquer Payée", ft.icons.EURO, "#10B981", self.marquer_payee),
+                btn_grid("URSSAF", ft.icons.CHECK_CIRCLE, "#16A34A", self.declarer_urssaf),
+                btn_grid("Convertir Devis", ft.icons.TRANSFORM, "#0EA5E9", self.convertir_devis_en_facture),
+                btn_grid("Export CSV", ft.icons.TABLE_CHART, "#4F46E5", self.exporter_csv),
+                btn_grid("Supprimer", ft.icons.DELETE, "#DC2626", self.supprimer_selectionne),
             ],
             spacing=6,
         )
@@ -313,8 +311,8 @@ class FacturationView(ft.Container):
 
         self.display_container.content = ft.Container(
             content=ft.Column(
-                controls=[ft.Row(controls=[self.table], scroll="auto")],
-                scroll="auto",
+                controls=[ft.Row(controls=[self.table], scroll=ft.ScrollMode.AUTO)],
+                scroll=ft.ScrollMode.AUTO,
                 expand=True,
             ),
             bgcolor="#141416",
@@ -358,8 +356,8 @@ class FacturationView(ft.Container):
                                     content=ft.Text(
                                         type_doc.upper(),
                                         size=10,
-                                        weight="bold",
-                                        color="white",
+                                        weight=ft.FontWeight.BOLD,
+                                        color=ft.colors.WHITE,
                                     ),
                                     bgcolor=(
                                         self.accent_color if type_doc == "facture" else "#8B5CF6"
@@ -367,15 +365,15 @@ class FacturationView(ft.Container):
                                     padding=4,
                                     border_radius=4,
                                 ),
-                                ft.Text(num, weight="bold", color="white", size=14),
+                                ft.Text(num, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE, size=14),
                                 ft.Text(
                                     total_ttc,
-                                    weight="bold",
+                                    weight=ft.FontWeight.BOLD,
                                     color="#10B981" if type_doc == "facture" else "#2B719E",
                                     size=14,
                                 ),
                             ],
-                            alignment="spaceBetween",
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         ),
                         ft.Text(f"Client : {nom}", size=12, color="#AEAEB2"),
                         ft.Row(
@@ -391,7 +389,7 @@ class FacturationView(ft.Container):
                                     color="#AEAEB2",
                                 ),
                             ],
-                            alignment="spaceBetween",
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         ),
                     ],
                     spacing=6,
@@ -453,7 +451,7 @@ class FacturationView(ft.Container):
                     content=ft.Container(
                         content=ft.Text(text, color=color, weight=weight),
                         alignment=ft.alignment.center_left,
-                        bgcolor="transparent",
+                        bgcolor=ft.colors.TRANSPARENT,
                         expand=True,
                     ),
                     on_tap=handle_single_tap,
@@ -462,7 +460,7 @@ class FacturationView(ft.Container):
             )
 
         row.cells = [
-            create_clickable_cell(type_doc.capitalize(), weight="w500"),
+            create_clickable_cell(type_doc.capitalize(), weight=ft.FontWeight.W_500),
             create_clickable_cell(num),
             create_clickable_cell(nom),
             create_clickable_cell(total_ttc, color="#10B981" if type_doc == "facture" else "#2B719E"),
@@ -827,9 +825,13 @@ class FacturationView(ft.Container):
         if not doc:
             return
 
+        page_obj = self.page or getattr(self.app, "page", None)
+        if not page_obj:
+            return
+
         def confirmation_action(confirme):
             dialog.open = False
-            self.safe_update()
+            page_obj.update()
             if confirme:
                 if type_doc == "devis":
                     if hasattr(self.app, "devis") and doc in self.app.devis:
@@ -848,13 +850,13 @@ class FacturationView(ft.Container):
             content=ft.Text(f"Supprimer le {type_doc} n°{doc.get('numero', '')} ?"),
             actions=[
                 ft.TextButton("Annuler", on_click=lambda _: confirmation_action(False)),
-                ft.ElevatedButton("Supprimer", bgcolor="#B91C1C", color="white", on_click=lambda _: confirmation_action(True)),
+                ft.ElevatedButton("Supprimer", bgcolor="#B91C1C", color=ft.colors.WHITE, on_click=lambda _: confirmation_action(True)),
             ],
         )
-        if self.page:
-            self.page.overlay.append(dialog)
-            dialog.open = True
-            self.safe_update()
+
+        page_obj.dialog = dialog
+        dialog.open = True
+        page_obj.update()
 
     def marquer_payee(self, e=None):
         type_doc, doc = self._selected_document()
@@ -944,10 +946,11 @@ class FacturationView(ft.Container):
             self.show_snack(f"Erreur export CSV : {ex}", is_error=True)
 
     def show_snack(self, message, is_error=False):
-        if self.page:
-            self.page.snack_bar = ft.SnackBar(
+        page_obj = self.page or getattr(self.app, "page", None)
+        if page_obj:
+            page_obj.snack_bar = ft.SnackBar(
                 content=ft.Text(message),
                 bgcolor="#B91C1C" if is_error else "#15803D",
             )
-            self.page.snack_bar.open = True
-            self.safe_update()
+            page_obj.snack_bar.open = True
+            page_obj.update()
