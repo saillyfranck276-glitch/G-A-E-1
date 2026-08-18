@@ -121,15 +121,15 @@ class FacturationAndroidApp:
       print("Erreur lors de la sauvegarde :", e)
 
   def setup_layout(self):
-    """Prépare l'interface avec en-tête personnalisé et barre latérale/tiroir."""
+    """Prépare l'interface avec en-tête mobile et menu déroulant sous-jacent."""
     nom_entreprise = self.entreprise.get("nom", "GESTION")
 
-    # 1. En-tête personnalisé pour Mobile
+    # 1. En-tête personnalisé Mobile
     self.menu_button = ft.IconButton(
         icon="menu",
         icon_color="white",
         icon_size=28,
-        on_click=self.ouvrir_drawer,
+        on_click=self.toggle_mobile_menu,
     )
 
     self.top_bar_title = ft.Text(
@@ -142,7 +142,7 @@ class FacturationAndroidApp:
     self.top_bar = ft.Container(
         height=56,
         bgcolor="#1A1A1C",
-        padding=ft.padding.only(left=10, right=10),
+        padding=10,
         content=ft.Row(
             controls=[
                 self.menu_button,
@@ -153,9 +153,18 @@ class FacturationAndroidApp:
         visible=False,
     )
 
-    # 2. Tiroir latéral Mobile
-    self.drawer = ft.NavigationDrawer(controls=[])
-    self.page.drawer = self.drawer
+    # 2. Menu déroulant Mobile (intégré à la page)
+    self.mobile_menu_column = ft.Column(
+        spacing=6,
+        scroll=ft.ScrollMode.AUTO,
+    )
+
+    self.mobile_menu = ft.Container(
+        bgcolor="#222225",
+        padding=10,
+        visible=False,
+        content=self.mobile_menu_column,
+    )
 
     # 3. Sidebar Desktop
     self.sidebar_titre = ft.Text(
@@ -207,6 +216,7 @@ class FacturationAndroidApp:
         ft.Column(
             controls=[
                 self.top_bar,
+                self.mobile_menu,
                 ft.Row(
                     controls=[
                         self.sidebar,
@@ -224,19 +234,21 @@ class FacturationAndroidApp:
     self.refresh_sidebar()
     self.on_responsive_resize()
 
-  def ouvrir_drawer(self, e=None):
-    """Ouvre le tiroir latéral sur mobile."""
-    if self.drawer:
-      self.drawer.open = True
-      self.page.update()
+  def toggle_mobile_menu(self, e=None):
+    """Affiche ou masque le menu mobile."""
+    self.mobile_menu.visible = not self.mobile_menu.visible
+    self.page.update()
 
   def on_responsive_resize(self, e=None):
-    """Bascule entre la sidebar fixe (Desktop) et la top_bar/Drawer (Mobile)."""
+    """Bascule entre l'affichage Desktop (Sidebar) et Mobile (TopBar)."""
     width = self.page.width if (self.page.width and self.page.width > 0) else 360
     is_mobile = width < 768
 
     self.sidebar.visible = not is_mobile
     self.top_bar.visible = is_mobile
+
+    if not is_mobile:
+      self.mobile_menu.visible = False
 
     try:
       self.page.update()
@@ -244,7 +256,7 @@ class FacturationAndroidApp:
       pass
 
   def refresh_sidebar(self):
-    """Met à jour les éléments de menu pour la Sidebar et le Drawer Mobile."""
+    """Reconstruit les menus Desktop et Mobile."""
     accent = self.entreprise.get("accent_color", "#2B719E")
     nom_ent = self.entreprise.get("nom", "GESTION").upper()
 
@@ -271,7 +283,7 @@ class FacturationAndroidApp:
         ("🏢 Entreprise", "Entreprise"),
     ])
 
-    # Configuration des boutons Sidebar (Desktop)
+    # 1. Boutons Desktop
     self.menu_buttons = []
     for texte, vue in menu:
       btn = ft.ElevatedButton(
@@ -287,50 +299,47 @@ class FacturationAndroidApp:
 
     self.menu_column.controls = self.menu_buttons
 
-    # Configuration des entrées Drawer (Mobile)
-    drawer_controls = [
-        ft.Container(
-            content=ft.Text(nom_ent, size=18, weight=ft.FontWeight.BOLD),
-            padding=15,
-        ),
-        ft.Divider(),
-    ]
-
+    # 2. Boutons Mobile
+    mobile_controls = []
     for texte, vue in menu:
 
       def make_click(v):
         return lambda e: self.navigate_to(v)
 
-      drawer_controls.append(
-          ft.ListTile(
-              title=ft.Text(texte, size=14),
+      mobile_controls.append(
+          ft.ElevatedButton(
+              texte,
+              height=40,
+              bgcolor=accent,
+              color="white",
+              style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=6)),
               on_click=make_click(vue),
           )
       )
 
-    drawer_controls.extend([
-        ft.Divider(),
-        ft.ListTile(
-            title=ft.Text("⚙️ Réglages", size=14),
+    mobile_controls.append(
+        ft.OutlinedButton(
+            "⚙️ Réglages",
+            height=40,
             on_click=lambda e: self.navigate_to("Réglages"),
-        ),
-    ])
-    self.drawer.controls = drawer_controls
+        )
+    )
+
+    self.mobile_menu_column.controls = mobile_controls
 
     try:
       self.menu_column.update()
-      if self.drawer:
-        self.drawer.update()
+      self.mobile_menu_column.update()
     except Exception:
       pass
 
   def navigate_to(self, view_name, **kwargs):
-    """Gère la navigation et le chargement des vues."""
+    """Gère la navigation et masque le menu mobile si ouvert."""
     print(f"Tentative de navigation vers : {view_name}")
 
-    # Fermer le tiroir sur mobile après sélection
-    if self.drawer and self.drawer.open:
-      self.drawer.open = False
+    # Fermer le menu mobile après sélection
+    if self.mobile_menu.visible:
+      self.mobile_menu.visible = False
 
     self.refresh_sidebar()
     self.content_area.content = None
