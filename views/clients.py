@@ -7,9 +7,10 @@ class ClientsView(ft.Container):
         self.app = app
         self.clients = getattr(self.app, "clients", [])
 
+        # Icône en chaîne texte brute (zéro crash Android)
         self.search_field = ft.TextField(
-            hint_text="Rechercher un client (nom, email, ville...)",
-            prefix_icon=ft.icons.SEARCH if hasattr(ft, "icons") else "search",
+            hint_text="Rechercher un client...",
+            prefix_icon="search",
             on_change=self._filtrer_clients,
             expand=True,
             bgcolor="#1A1A1C",
@@ -21,15 +22,13 @@ class ClientsView(ft.Container):
         self._build_interface()
 
     def get_page(self):
-        """Récupère l'instance active de la page."""
         return self.page or getattr(self.app, "page", None)
 
     def safe_update(self):
-        """Met à jour l'UI de manière sécurisée."""
-        page_obj = self.get_page()
-        if page_obj:
+        page = self.get_page()
+        if page:
             try:
-                page_obj.update()
+                page.update()
             except Exception:
                 pass
 
@@ -37,16 +36,17 @@ class ClientsView(ft.Container):
         self.refresh_client_list()
 
     def _build_interface(self):
+        entreprise = getattr(self.app, "entreprise", {})
+        accent_color = entreprise.get("accent_color", "#2B719E")
+
         self.content = ft.Column(
             controls=[
                 ft.Row(
                     controls=[
-                        ft.Text("👥 Gestion des Clients", size=24, weight="bold"),
+                        ft.Text("👥 Gestion des Clients", size=22, weight="bold"),
                         ft.ElevatedButton(
                             content=ft.Text("+ Nouveau Client"),
-                            bgcolor=getattr(self.app, "entreprise", {}).get(
-                                "accent_color", "#2B719E"
-                            ),
+                            bgcolor=accent_color,
                             color="white",
                             on_click=lambda _: self._ouvrir_popup_client(),
                         ),
@@ -82,7 +82,7 @@ class ClientsView(ft.Container):
                         "Aucun client trouvé.", color="#8E8E93", size=14
                     ),
                     padding=20,
-                    alignment=ft.alignment.CENTER,  # Fix de l'alignement
+                    alignment="center",
                 )
             )
         else:
@@ -95,6 +95,8 @@ class ClientsView(ft.Container):
         self.refresh_client_list(e.control.value)
 
     def _creer_carte_client(self, client):
+        adresse_complete = f"{client.get('adresse', '')} {client.get('code_postal', '')} {client.get('ville', '')}".strip()
+
         return ft.Container(
             content=ft.Row(
                 controls=[
@@ -102,7 +104,7 @@ class ClientsView(ft.Container):
                         controls=[
                             ft.Text(
                                 client.get("nom", "Sans nom"),
-                                size=16,
+                                size=15,
                                 weight="bold",
                             ),
                             ft.Text(
@@ -111,8 +113,8 @@ class ClientsView(ft.Container):
                                 color="#AEAEB2",
                             ),
                             ft.Text(
-                                f"📍 {client.get('adresse', '')} {client.get('code_postal', '')} {client.get('ville', '')}",
-                                size=12,
+                                f"📍 {adresse_complete}" if adresse_complete else "📍 Adresse non renseignée",
+                                size=11,
                                 color="#8E8E93",
                             ),
                         ],
@@ -122,18 +124,14 @@ class ClientsView(ft.Container):
                     ft.Row(
                         controls=[
                             ft.IconButton(
-                                icon=ft.icons.EDIT
-                                if hasattr(ft, "icons")
-                                else "edit",
+                                icon="edit",
                                 icon_color="#3B82F6",
                                 on_click=lambda _, c=client: self._ouvrir_popup_client(
                                     c
                                 ),
                             ),
                             ft.IconButton(
-                                icon=ft.icons.DELETE
-                                if hasattr(ft, "icons")
-                                else "delete",
+                                icon="delete",
                                 icon_color="#EF4444",
                                 on_click=lambda _, c=client: self._supprimer_client(
                                     c
@@ -157,37 +155,37 @@ class ClientsView(ft.Container):
 
         tf_nom = ft.TextField(
             label="Nom / Raison Sociale *",
-            value=client_data.get("nom", ""),
+            value=str(client_data.get("nom", "")),
             bgcolor="#1A1A1C",
         )
         tf_email = ft.TextField(
             label="Email",
-            value=client_data.get("email", ""),
+            value=str(client_data.get("email", "")),
             bgcolor="#1A1A1C",
         )
         tf_tel = ft.TextField(
             label="Téléphone",
-            value=client_data.get("telephone", ""),
+            value=str(client_data.get("telephone", "")),
             bgcolor="#1A1A1C",
         )
         tf_adresse = ft.TextField(
             label="Adresse",
-            value=client_data.get("adresse", ""),
+            value=str(client_data.get("adresse", "")),
             bgcolor="#1A1A1C",
         )
         tf_cp = ft.TextField(
             label="Code Postal",
-            value=client_data.get("code_postal", ""),
+            value=str(client_data.get("code_postal", "")),
             bgcolor="#1A1A1C",
         )
         tf_ville = ft.TextField(
             label="Ville",
-            value=client_data.get("ville", ""),
+            value=str(client_data.get("ville", "")),
             bgcolor="#1A1A1C",
         )
         tf_siret = ft.TextField(
             label="SIRET",
-            value=client_data.get("siret", ""),
+            value=str(client_data.get("siret", "")),
             bgcolor="#1A1A1C",
         )
 
@@ -195,7 +193,7 @@ class ClientsView(ft.Container):
             self._fermer_dialogue(dialog)
 
         def enregistrer(e):
-            if not tf_nom.value.strip():
+            if not tf_nom.value or not tf_nom.value.strip():
                 self.show_snack(
                     "Le nom du client est obligatoire !", is_error=True
                 )
@@ -204,12 +202,12 @@ class ClientsView(ft.Container):
             client_data.update(
                 {
                     "nom": tf_nom.value.strip(),
-                    "email": tf_email.value.strip(),
-                    "telephone": tf_tel.value.strip(),
-                    "adresse": tf_adresse.value.strip(),
-                    "code_postal": tf_cp.value.strip(),
-                    "ville": tf_ville.value.strip(),
-                    "siret": tf_siret.value.strip(),
+                    "email": tf_email.value.strip() if tf_email.value else "",
+                    "telephone": tf_tel.value.strip() if tf_tel.value else "",
+                    "adresse": tf_adresse.value.strip() if tf_adresse.value else "",
+                    "code_postal": tf_cp.value.strip() if tf_cp.value else "",
+                    "ville": tf_ville.value.strip() if tf_ville.value else "",
+                    "siret": tf_siret.value.strip() if tf_siret.value else "",
                 }
             )
 
@@ -224,7 +222,10 @@ class ClientsView(ft.Container):
             self.refresh_client_list(self.search_field.value)
             self.show_snack("Client enregistré avec succès ! ✔")
 
-        # Modale adaptée aux écrans tactiles et claviers virtuels
+        entreprise = getattr(self.app, "entreprise", {})
+        accent_color = entreprise.get("accent_color", "#2B719E")
+
+        # Container fixe à 300px avec scroll pour compatibilité clavier mobile
         dialog = ft.AlertDialog(
             title=ft.Text(
                 "Éditer Client" if est_edition else "Nouveau Client",
@@ -245,8 +246,8 @@ class ClientsView(ft.Container):
                     spacing=10,
                     scroll=ft.ScrollMode.AUTO,
                 ),
-                width=400,
-                max_height=380,  # Empêche la modale de dépasser de l'écran
+                width=320,
+                height=300,
             ),
             actions=[
                 ft.TextButton(
@@ -254,9 +255,7 @@ class ClientsView(ft.Container):
                 ),
                 ft.ElevatedButton(
                     content=ft.Text("Enregistrer"),
-                    bgcolor=getattr(self.app, "entreprise", {}).get(
-                        "accent_color", "#2B719E"
-                    ),
+                    bgcolor=accent_color,
                     color="white",
                     on_click=enregistrer,
                 ),
@@ -301,33 +300,44 @@ class ClientsView(ft.Container):
         self._ouvrir_dialogue(dialog)
 
     def _ouvrir_dialogue(self, dlg):
-        page_obj = self.get_page()
-        if page_obj:
+        page = self.get_page()
+        if not page:
+            return
+        if hasattr(page, "open"):
             try:
-                page_obj.open(dlg)
+                page.open(dlg)
+                return
             except Exception:
-                dlg.open = True
-                if dlg not in page_obj.overlay:
-                    page_obj.overlay.append(dlg)
-                page_obj.update()
+                pass
+        dlg.open = True
+        if dlg not in page.overlay:
+            page.overlay.append(dlg)
+        page.update()
 
     def _fermer_dialogue(self, dlg):
-        page_obj = self.get_page()
-        if page_obj:
+        page = self.get_page()
+        if not page:
+            return
+        if hasattr(page, "close"):
             try:
-                page_obj.close(dlg)
+                page.close(dlg)
+                return
             except Exception:
-                dlg.open = False
-                page_obj.update()
+                pass
+        dlg.open = False
+        page.update()
 
     def show_snack(self, message, is_error=False):
         color = "#B91C1C" if is_error else "#15803D"
         page = self.get_page()
         if page:
             snack = ft.SnackBar(content=ft.Text(message), bgcolor=color)
-            try:
-                page.open(snack)
-            except Exception:
-                page.snack_bar = snack
-                snack.open = True
-                page.update()
+            if hasattr(page, "open"):
+                try:
+                    page.open(snack)
+                    return
+                except Exception:
+                    pass
+            page.snack_bar = snack
+            snack.open = True
+            page.update()
