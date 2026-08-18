@@ -124,9 +124,9 @@ class FacturationAndroidApp:
     """Prépare l'interface avec en-tête mobile et menu déroulant sous-jacent."""
     nom_entreprise = self.entreprise.get("nom", "GESTION")
 
-    # 1. En-tête personnalisé Mobile
+    # 1. En-tête personnalisé Mobile (avec ft.icons.MENU)
     self.menu_button = ft.IconButton(
-        icon="menu",
+        icon=ft.icons.MENU,
         icon_color="white",
         icon_size=28,
         on_click=self.toggle_mobile_menu,
@@ -153,7 +153,7 @@ class FacturationAndroidApp:
         visible=False,
     )
 
-    # 2. Menu déroulant Mobile (intégré à la page)
+    # 2. Menu déroulant Mobile
     self.mobile_menu_column = ft.Column(
         spacing=6,
         scroll=ft.ScrollMode.AUTO,
@@ -211,7 +211,7 @@ class FacturationAndroidApp:
         ),
     )
 
-    # 4. Assemblage principal de la page
+    # 4. Assemblage principal
     self.page.add(
         ft.Column(
             controls=[
@@ -240,7 +240,7 @@ class FacturationAndroidApp:
     self.page.update()
 
   def on_responsive_resize(self, e=None):
-    """Bascule entre l'affichage Desktop (Sidebar) et Mobile (TopBar)."""
+    """Bascule entre Desktop (Sidebar) et Mobile (TopBar)."""
     width = self.page.width if (self.page.width and self.page.width > 0) else 360
     is_mobile = width < 768
 
@@ -334,10 +334,9 @@ class FacturationAndroidApp:
       pass
 
   def navigate_to(self, view_name, **kwargs):
-    """Gère la navigation et masque le menu mobile si ouvert."""
+    """Gère la navigation et ferme le menu mobile."""
     print(f"Tentative de navigation vers : {view_name}")
 
-    # Fermer le menu mobile après sélection
     if self.mobile_menu.visible:
       self.mobile_menu.visible = False
 
@@ -430,7 +429,9 @@ class FacturationAndroidApp:
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Icon("warning_amber_rounded", size=80, color="orange"),
+                    ft.Icon(
+                        ft.icons.WARNING_AMBER_ROUNDED, size=80, color="orange"
+                    ),
                     ft.Text(
                         f"Vue '{view_name}' introuvable.",
                         size=24,
@@ -447,7 +448,7 @@ class FacturationAndroidApp:
               alignment=ft.MainAxisAlignment.CENTER,
               horizontal_alignment=ft.CrossAxisAlignment.CENTER,
               controls=[
-                  ft.Icon("error_outline", color="red", size=80),
+                  ft.Icon(ft.icons.ERROR_OUTLINE, color="red", size=80),
                   ft.Text(
                       "Erreur lors du chargement de la vue",
                       size=22,
