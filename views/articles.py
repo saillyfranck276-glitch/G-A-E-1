@@ -7,9 +7,10 @@ class ArticlesView(ft.Container):
         self.app = app
         self.articles = getattr(self.app, "articles", [])
 
+        # Utilisation d'une chaîne pure pour l'icône de recherche (évite tout crash sur Android)
         self.search_field = ft.TextField(
-            hint_text="Rechercher un article (désignation, référence...)",
-            prefix_icon=ft.icons.SEARCH if hasattr(ft, "icons") else "search",
+            hint_text="Rechercher un article...",
+            prefix_icon="search",
             on_change=self._filtrer_articles,
             expand=True,
             bgcolor="#1A1A1C",
@@ -21,15 +22,13 @@ class ArticlesView(ft.Container):
         self._build_interface()
 
     def get_page(self):
-        """Récupère l'instance active de la page Flet."""
         return self.page or getattr(self.app, "page", None)
 
     def safe_update(self):
-        """Mise à jour sécurisée de l'UI."""
-        page_obj = self.get_page()
-        if page_obj:
+        page = self.get_page()
+        if page:
             try:
-                page_obj.update()
+                page.update()
             except Exception:
                 pass
 
@@ -37,15 +36,15 @@ class ArticlesView(ft.Container):
         self.refresh_article_list()
 
     def _build_interface(self):
-        accent_color = getattr(self.app, "entreprise", {}).get(
-            "accent_color", "#2B719E"
-        )
+        entreprise = getattr(self.app, "entreprise", {})
+        accent_color = entreprise.get("accent_color", "#2B719E")
+
         self.content = ft.Column(
             controls=[
                 ft.Row(
                     controls=[
                         ft.Text(
-                            "📦 Prestations & Articles", size=24, weight="bold"
+                            "📦 Prestations & Articles", size=22, weight="bold"
                         ),
                         ft.ElevatedButton(
                             content=ft.Text("+ Nouvel Article"),
@@ -84,14 +83,12 @@ class ArticlesView(ft.Container):
                         "Aucun article trouvé.", color="#8E8E93", size=14
                     ),
                     padding=20,
-                    alignment=ft.alignment.CENTER,  # Correction du crash alignment
+                    alignment="center",
                 )
             )
         else:
             for a in articles_a_afficher:
-                self.list_column.controls.append(
-                    self._creer_carte_article(a)
-                )
+                self.list_column.controls.append(self._creer_carte_article(a))
 
         self.safe_update()
 
@@ -99,8 +96,16 @@ class ArticlesView(ft.Container):
         self.refresh_article_list(e.control.value)
 
     def _creer_carte_article(self, article):
-        prix_ht = float(article.get("prix_ht", 0.0))
-        tva = float(article.get("tva", 20.0))
+        try:
+            prix_ht = float(article.get("prix_ht", 0.0))
+        except (ValueError, TypeError):
+            prix_ht = 0.0
+
+        try:
+            tva = float(article.get("tva", 20.0))
+        except (ValueError, TypeError):
+            tva = 20.0
+
         prix_ttc = prix_ht * (1 + tva / 100)
 
         return ft.Container(
@@ -112,7 +117,7 @@ class ArticlesView(ft.Container):
                                 controls=[
                                     ft.Text(
                                         article.get("designation", "Sans nom"),
-                                        size=16,
+                                        size=15,
                                         weight="bold",
                                     ),
                                     ft.Container(
@@ -137,30 +142,26 @@ class ArticlesView(ft.Container):
                             ),
                             ft.Text(
                                 article.get("description", ""),
-                                size=12,
+                                size=11,
                                 color="#8E8E93",
                                 max_lines=1,
                                 overflow=ft.TextOverflow.ELLIPSIS,
                             ),
                         ],
-                        spacing=4,
+                        spacing=3,
                         expand=True,
                     ),
                     ft.Row(
                         controls=[
                             ft.IconButton(
-                                icon=ft.icons.EDIT
-                                if hasattr(ft, "icons")
-                                else "edit",
+                                icon="edit",
                                 icon_color="#3B82F6",
                                 on_click=lambda _, a=article: self._ouvrir_popup_article(
                                     a
                                 ),
                             ),
                             ft.IconButton(
-                                icon=ft.icons.DELETE
-                                if hasattr(ft, "icons")
-                                else "delete",
+                                icon="delete",
                                 icon_color="#EF4444",
                                 on_click=lambda _, a=article: self._supprimer_article(
                                     a
@@ -184,12 +185,12 @@ class ArticlesView(ft.Container):
 
         tf_ref = ft.TextField(
             label="Référence",
-            value=art_data.get("reference", ""),
+            value=str(art_data.get("reference", "")),
             bgcolor="#1A1A1C",
         )
         tf_desig = ft.TextField(
             label="Désignation / Nom *",
-            value=art_data.get("designation", ""),
+            value=str(art_data.get("designation", "")),
             bgcolor="#1A1A1C",
         )
         tf_prix_ht = ft.TextField(
@@ -210,13 +211,14 @@ class ArticlesView(ft.Container):
                 ft.dropdown.Option(u)
                 for u in ["Unité", "Heure", "Jour", "Forfait", "m²", "kg", "ml"]
             ],
-            value=art_data.get("unite", "Unité"),
+            value=str(art_data.get("unite", "Unité")),
             bgcolor="#1A1A1C",
         )
         tf_desc = ft.TextField(
             label="Description détaillée",
-            value=art_data.get("description", ""),
+            value=str(art_data.get("description", "")),
             multiline=True,
+            min_lines=2,
             max_lines=3,
             bgcolor="#1A1A1C",
         )
@@ -225,19 +227,16 @@ class ArticlesView(ft.Container):
             self._fermer_dialogue(dialog)
 
         def enregistrer(e):
-            if not tf_desig.value.strip():
+            if not tf_desig.value or not tf_desig.value.strip():
                 self.show_snack(
                     "La désignation de l'article est obligatoire !",
                     is_error=True,
                 )
                 return
 
-            # Conversion sécurisée du Prix HT
             try:
                 val_ht = (
-                    tf_prix_ht.value.replace(" ", "")
-                    .replace(",", ".")
-                    .strip()
+                    tf_prix_ht.value.replace(" ", "").replace(",", ".").strip()
                 )
                 prix_ht = float(val_ht) if val_ht else 0.0
             except ValueError:
@@ -246,7 +245,6 @@ class ArticlesView(ft.Container):
                 )
                 return
 
-            # Conversion sécurisée du Taux de TVA
             try:
                 val_tva = (
                     tf_tva.value.replace(" ", "").replace(",", ".").strip()
@@ -260,12 +258,12 @@ class ArticlesView(ft.Container):
 
             art_data.update(
                 {
-                    "reference": tf_ref.value.strip(),
+                    "reference": tf_ref.value.strip() if tf_ref.value else "",
                     "designation": tf_desig.value.strip(),
                     "prix_ht": prix_ht,
                     "tva": tva,
                     "unite": dd_unite.value or "Unité",
-                    "description": tf_desc.value.strip(),
+                    "description": tf_desc.value.strip() if tf_desc.value else "",
                 }
             )
 
@@ -280,10 +278,10 @@ class ArticlesView(ft.Container):
             self.refresh_article_list(self.search_field.value)
             self.show_snack("Article sauvegardé avec succès ! ✔")
 
-        accent_color = getattr(self.app, "entreprise", {}).get(
-            "accent_color", "#2B719E"
-        )
+        entreprise = getattr(self.app, "entreprise", {})
+        accent_color = entreprise.get("accent_color", "#2B719E")
 
+        # Container fixe à 300px pour garder 'Enregistrer' visible malgré le clavier mobile
         dialog = ft.AlertDialog(
             title=ft.Text(
                 "Modifier l'Article" if est_edition else "Nouvel Article",
@@ -295,21 +293,16 @@ class ArticlesView(ft.Container):
                     controls=[
                         tf_desig,
                         tf_ref,
-                        ft.Row(
-                            controls=[
-                                ft.Container(content=tf_prix_ht, expand=True),
-                                ft.Container(content=tf_tva, expand=True),
-                            ],
-                            spacing=10,
-                        ),
+                        tf_prix_ht,
+                        tf_tva,
                         dd_unite,
                         tf_desc,
                     ],
                     spacing=10,
                     scroll=ft.ScrollMode.AUTO,
                 ),
-                width=420,
-                max_height=380,  # Empêche la fenêtre de dépasser en bas
+                width=320,
+                height=300,
             ),
             actions=[
                 ft.TextButton(
@@ -362,33 +355,44 @@ class ArticlesView(ft.Container):
         self._ouvrir_dialogue(dialog)
 
     def _ouvrir_dialogue(self, dlg):
-        page_obj = self.get_page()
-        if page_obj:
+        page = self.get_page()
+        if not page:
+            return
+        if hasattr(page, "open"):
             try:
-                page_obj.open(dlg)
+                page.open(dlg)
+                return
             except Exception:
-                dlg.open = True
-                if dlg not in page_obj.overlay:
-                    page_obj.overlay.append(dlg)
-                page_obj.update()
+                pass
+        dlg.open = True
+        if dlg not in page.overlay:
+            page.overlay.append(dlg)
+        page.update()
 
     def _fermer_dialogue(self, dlg):
-        page_obj = self.get_page()
-        if page_obj:
+        page = self.get_page()
+        if not page:
+            return
+        if hasattr(page, "close"):
             try:
-                page_obj.close(dlg)
+                page.close(dlg)
+                return
             except Exception:
-                dlg.open = False
-                page_obj.update()
+                pass
+        dlg.open = False
+        page.update()
 
     def show_snack(self, message, is_error=False):
         color = "#B91C1C" if is_error else "#15803D"
         page = self.get_page()
         if page:
             snack = ft.SnackBar(content=ft.Text(message), bgcolor=color)
-            try:
-                page.open(snack)
-            except Exception:
-                page.snack_bar = snack
-                snack.open = True
-                page.update()
+            if hasattr(page, "open"):
+                try:
+                    page.open(snack)
+                    return
+                except Exception:
+                    pass
+            page.snack_bar = snack
+            snack.open = True
+            page.update()
