@@ -94,7 +94,8 @@ class FacturationView(ft.Container):
     self.padding = 10
     self.accent_color = "#2B719E"
 
-    self.csv_picker = ft.FilePicker(on_result=self._on_csv_export_result)
+    self.csv_picker = ft.FilePicker()
+    self.csv_picker.on_result = self._on_csv_export_result
     self.documents = {}
     self.selected_doc_key = None
     self.display_container = ft.Container(expand=True)
