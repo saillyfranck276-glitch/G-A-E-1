@@ -8,7 +8,7 @@ import flet as ft
 # --- IMPORTS OPTIONNELS REPORTLAB & PYHANKO ---
 REPORTLAB_AVAILABLE = False
 try:
-    from reportlab.lib import colors as rl_colors  # Rénommé pour éviter tout conflit avec Flet
+    from reportlab.lib import colors as rl_colors  # Alias pour éviter tout conflit
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.pdfgen import canvas
@@ -133,12 +133,12 @@ class FacturationView(ft.Container):
             padding=15,
             bgcolor="#3f1212",
             border_radius=10,
-            border=safe_border(1, ft.colors.RED_700),
+            border=safe_border(1, "red700"),
             content=ft.Column(
                 [
                     ft.Text(
                         "⚠️ Erreur dans la Facturation",
-                        color=ft.colors.RED_300,
+                        color="red300",
                         weight=ft.FontWeight.BOLD,
                     ),
                     ft.Text(error_msg, color="white", size=11, selectable=True),
@@ -158,7 +158,7 @@ class FacturationView(ft.Container):
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    icon=ft.icons.ARROW_BACK_ROUNDED,
+                    icon="arrow_back_rounded",
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
                 ft.Text("📂 Factures & Devis", size=20, weight=ft.FontWeight.BOLD),
@@ -241,37 +241,37 @@ class FacturationView(ft.Container):
             controls=[
                 btn_grid(
                     "Voir PDF",
-                    ft.icons.PICTURE_AS_PDF,
+                    "picture_as_pdf",
                     "#2B719E",
                     self.ouvrir_pdf_selectionne,
                 ),
                 btn_grid(
                     "Générer PDF",
-                    ft.icons.SAVE_ALT,
+                    "save_alt",
                     "#8B5CF6",
                     self.exporter_pdf_organise,
                 ),
                 btn_grid(
-                    "Modifier", ft.icons.EDIT, "#F59E0B", self.modifier_selectionne
+                    "Modifier", "edit", "#F59E0B", self.modifier_selectionne
                 ),
                 btn_grid(
-                    "Marquer Payée", ft.icons.EURO, "#10B981", self.marquer_payee
+                    "Marquer Payée", "euro", "#10B981", self.marquer_payee
                 ),
                 btn_grid(
-                    "URSSAF", ft.icons.CHECK_CIRCLE, "#16A34A", self.declarer_urssaf
+                    "URSSAF", "check_circle", "#16A34A", self.declarer_urssaf
                 ),
                 btn_grid(
                     "Convertir Devis",
-                    ft.icons.TRANSFORM,
+                    "transform",
                     "#0EA5E9",
                     self.convertir_devis_en_facture,
                 ),
                 btn_grid(
-                    "Export CSV", ft.icons.TABLE_CHART, "#4F46E5", self.exporter_csv
+                    "Export CSV", "table_chart", "#4F46E5", self.exporter_csv
                 ),
                 btn_grid(
                     "Supprimer",
-                    ft.icons.DELETE,
+                    "delete",
                     "#DC2626",
                     self.supprimer_selectionne,
                 ),
@@ -609,7 +609,7 @@ class FacturationView(ft.Container):
                 else:
                     self.show_snack(f"PDF généré : {file_name}")
             else:
-                self.show_snack(f"⚡ PDF enregistré dans le dossier de l'app")
+                self.show_snack("⚡ PDF enregistré dans le dossier de l'app")
         except Exception as ex:
             self.show_snack(f"Erreur création PDF : {ex}", is_error=True)
 
@@ -1035,7 +1035,7 @@ class FacturationView(ft.Container):
                 ),
                 ft.ElevatedButton(
                     "Supprimer",
-                    bgcolor=ft.colors.RED_700,
+                    bgcolor="red700",
                     color="white",
                     on_click=lambda _: confirmation_action(True),
                 ),
@@ -1144,7 +1144,7 @@ class FacturationView(ft.Container):
         if self.page:
             self.page.snack_bar = ft.SnackBar(
                 content=ft.Text(message),
-                bgcolor=ft.colors.RED_700 if is_error else ft.colors.GREEN_700,
+                bgcolor="red700" if is_error else "green700",
             )
             self.page.snack_bar.open = True
             self.safe_update()
