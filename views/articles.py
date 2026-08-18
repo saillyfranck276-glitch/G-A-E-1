@@ -14,7 +14,7 @@ class ArticlesView(ft.Container):
         super().__init__(expand=True)
         self.app = app
 
-        # Récupération de la couleur d'accentuation de l'entreprise
+        # Récupération de la couleur d'accentuation
         self.entreprise_data = getattr(
             self.app, "entreprise", getattr(self.app, "association", {})
         )
@@ -24,13 +24,18 @@ class ArticlesView(ft.Container):
 
         self._build_interface()
 
+    def get_page(self):
+        """Récupère l'instance active de la page Flet."""
+        return self.page or getattr(self.app, "page", None)
+
     def safe_update(self):
         """Mise à jour sécurisée de l'UI."""
-        try:
-            if self.page:
-                self.update()
-        except Exception:
-            pass
+        page_obj = self.get_page()
+        if page_obj:
+            try:
+                page_obj.update()
+            except Exception:
+                pass
 
     def did_mount(self):
         """Initialisation à l'affichage de la vue."""
@@ -40,7 +45,7 @@ class ArticlesView(ft.Container):
         # Champ de recherche
         self.search_input = ft.TextField(
             hint_text="Rechercher par désignation, référence ou catégorie...",
-            prefix_icon="search",
+            prefix_icon=ft.Icons.SEARCH if hasattr(ft, "Icons") else "search",
             on_change=self.on_search_change,
             expand=True,
             bgcolor="#1A1A1C",
@@ -48,15 +53,23 @@ class ArticlesView(ft.Container):
             text_size=13,
         )
 
-        # Bouton d'ajout d'article
+        icon_add = ft.Icons.ADD if hasattr(ft, "Icons") else "add"
+
+        # Bouton d'ajout d'article (icône intégrée dans content)
         self.btn_add = ft.ElevatedButton(
-            "Nouveau Produit / Article",
-            icon="add",
+            content=ft.Row(
+                [
+                    ft.Icon(icon_add, size=18, color="white"),
+                    ft.Text("Nouveau Produit / Article"),
+                ],
+                tight=True,
+                spacing=6,
+            ),
             bgcolor=self.accent_color,
             color="white",
             height=40,
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
-            on_click=lambda e: self.ouvrir_dialogue_article(),
+            on_click=self.ouvrir_dialogue_article,
         )
 
         header_row = ft.Row(
@@ -64,7 +77,7 @@ class ArticlesView(ft.Container):
                 ft.Text("📦 Gestion des Articles & Stock", size=18, weight="bold"),
                 self.btn_add,
             ],
-            alignment="spaceBetween",
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         )
 
         self.content = ft.Container(
@@ -145,6 +158,9 @@ class ArticlesView(ft.Container):
             "#34D399" if stock > 5 else ("#F59E0B" if stock > 0 else "#EF4444")
         )
 
+        icon_edit = ft.Icons.EDIT if hasattr(ft, "Icons") else "edit"
+        icon_delete = ft.Icons.DELETE if hasattr(ft, "Icons") else "delete"
+
         return ft.Container(
             padding=12,
             bgcolor="#1e293b",
@@ -175,7 +191,7 @@ class ArticlesView(ft.Container):
                             ft.Text(f"({prix_ht:.2f} € HT)", size=11, color="#AEAEB2"),
                         ],
                         col={"xs": 6, "sm": 3},
-                        horizontal_alignment="end",
+                        horizontal_alignment=ft.CrossAxisAlignment.END,
                         spacing=2,
                     ),
                     ft.Column(
@@ -193,78 +209,81 @@ class ArticlesView(ft.Container):
                             ),
                         ],
                         col={"xs": 6, "sm": 2},
-                        alignment="center",
+                        alignment=ft.alignment.center,
                     ),
                     ft.Row(
                         [
                             ft.IconButton(
-                                icon="edit",
+                                icon=icon_edit,
                                 icon_size=18,
                                 icon_color="white",
                                 tooltip="Modifier",
-                                on_click=lambda e, a=article: self.ouvrir_dialogue_article(a),
+                                on_click=lambda e, a=article: self.ouvrir_dialogue_article(e, a),
                             ),
                             ft.IconButton(
-                                icon="delete",
+                                icon=icon_delete,
                                 icon_size=18,
                                 icon_color="#EF4444",
                                 tooltip="Supprimer",
-                                on_click=lambda e, a=article: self.supprimer_article(a),
+                                on_click=lambda e, a=article: self.supprimer_article(e, a),
                             ),
                         ],
                         col={"xs": 12, "sm": 2},
-                        alignment="end",
+                        alignment=ft.MainAxisAlignment.END,
                         spacing=0,
                     ),
                 ],
-                alignment="spaceBetween",
-                vertical_alignment="center",
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )
 
     def on_search_change(self, e):
         self.refresh_list(self.search_input.value or "")
 
-    def ouvrir_dialogue_article(self, article=None):
+    def ouvrir_dialogue_article(self, e=None, article=None):
         is_edit = article is not None
 
         ref_field = ft.TextField(
             label="Référence",
-            value=article.get("reference", "") if is_edit else "",
+            value=str(article.get("reference", "")) if is_edit else "",
             col={"xs": 12, "sm": 6},
             bgcolor="#1A1A1C",
         )
         des_field = ft.TextField(
             label="Désignation",
-            value=article.get("designation", "") if is_edit else "",
+            value=str(article.get("designation", "")) if is_edit else "",
             col={"xs": 12, "sm": 6},
             bgcolor="#1A1A1C",
         )
         cat_field = ft.TextField(
             label="Catégorie",
-            value=article.get("categorie", "Général") if is_edit else "Général",
+            value=str(article.get("categorie", "Général")) if is_edit else "Général",
             col={"xs": 12, "sm": 6},
             bgcolor="#1A1A1C",
         )
         ht_field = ft.TextField(
             label="Prix HT (€)",
-            value=str(article.get("prix_ht", "")) if is_edit else "0.0",
-            keyboard_type="number",
+            value=str(article.get("prix_ht", "0.0")) if is_edit else "0.0",
+            keyboard_type=ft.KeyboardType.NUMBER,
             col={"xs": 6, "sm": 3},
             bgcolor="#1A1A1C",
         )
         stock_field = ft.TextField(
             label="Stock actuel",
-            value=str(article.get("stock", "")) if is_edit else "0",
-            keyboard_type="number",
+            value=str(article.get("stock", "0")) if is_edit else "0",
+            keyboard_type=ft.KeyboardType.NUMBER,
             col={"xs": 6, "sm": 3},
             bgcolor="#1A1A1C",
         )
 
-        def enregistrer(e):
+        def enregistrer(evt):
             try:
-                p_ht = float((ht_field.value or "0").replace(",", "."))
-                stk = int((stock_field.value or "0").strip())
+                raw_ht = (ht_field.value or "0").strip().replace(",", ".")
+                p_ht = float(raw_ht) if raw_ht else 0.0
+
+                raw_stk = (stock_field.value or "0").strip()
+                stk = int(float(raw_stk)) if raw_stk else 0
             except ValueError:
                 self._show_snackbar("Prix et stock doivent être des nombres valides.", is_error=True)
                 return
@@ -273,34 +292,38 @@ class ArticlesView(ft.Container):
                 self._show_snackbar("La désignation est obligatoire.", is_error=True)
                 return
 
-            if not hasattr(self.app, "articles") or not isinstance(self.app.articles, list):
-                self.app.articles = []
+            try:
+                if not hasattr(self.app, "articles") or not isinstance(self.app.articles, list):
+                    self.app.articles = []
 
-            if is_edit:
-                article["reference"] = ref_field.value.strip()
-                article["designation"] = des_field.value.strip()
-                article["categorie"] = cat_field.value.strip()
-                article["prix_ht"] = p_ht
-                article["prix_ttc"] = round(p_ht * 1.2, 2)
-                article["stock"] = stk
-            else:
-                nouvel_article = {
-                    "id": len(self.app.articles) + 1,
-                    "reference": ref_field.value.strip(),
-                    "designation": des_field.value.strip(),
-                    "categorie": cat_field.value.strip(),
-                    "prix_ht": p_ht,
-                    "prix_ttc": round(p_ht * 1.2, 2),
-                    "stock": stk,
-                }
-                self.app.articles.append(nouvel_article)
+                if is_edit:
+                    article["reference"] = ref_field.value.strip()
+                    article["designation"] = des_field.value.strip()
+                    article["categorie"] = cat_field.value.strip()
+                    article["prix_ht"] = p_ht
+                    article["prix_ttc"] = round(p_ht * 1.2, 2)
+                    article["stock"] = stk
+                else:
+                    nouvel_article = {
+                        "id": len(self.app.articles) + 1,
+                        "reference": ref_field.value.strip(),
+                        "designation": des_field.value.strip(),
+                        "categorie": cat_field.value.strip(),
+                        "prix_ht": p_ht,
+                        "prix_ttc": round(p_ht * 1.2, 2),
+                        "stock": stk,
+                    }
+                    self.app.articles.append(nouvel_article)
 
-            if hasattr(self.app, "save_data"):
-                self.app.save_data()
+                if hasattr(self.app, "save_data"):
+                    self.app.save_data()
 
-            self._fermer_dialogue(dlg)
-            self.refresh_list(self.search_input.value or "")
-            self._show_snackbar("Article enregistré avec succès !")
+                self._fermer_dialogue(dlg)
+                self.refresh_list(self.search_input.value or "")
+                self._show_snackbar("Article enregistré avec succès !")
+            except Exception as ex:
+                print(f"Erreur enregistrer : {ex}")
+                self._show_snackbar(f"Erreur d'enregistrement : {ex}", is_error=True)
 
         dlg = ft.AlertDialog(
             title=ft.Text("Modifier l'article" if is_edit else "Nouvel Article"),
@@ -315,31 +338,35 @@ class ArticlesView(ft.Container):
                 ]),
             ),
             actions=[
-                ft.TextButton("Annuler", on_click=lambda e: self._fermer_dialogue(dlg)),
+                ft.TextButton(
+                    content=ft.Text("Annuler"),
+                    on_click=lambda evt: self._fermer_dialogue(dlg)
+                ),
                 ft.ElevatedButton(
-                    "Enregistrer",
+                    content=ft.Text("Enregistrer"),
                     bgcolor=self.accent_color,
                     color="white",
                     on_click=enregistrer,
                 ),
             ],
-            actions_alignment="end",
+            actions_alignment=ft.MainAxisAlignment.END,
         )
 
         self._ouvrir_dialogue(dlg)
 
     def _ouvrir_dialogue(self, dlg):
-        page_obj = self.page or getattr(self.app, "page", None)
+        page_obj = self.get_page()
         if page_obj:
             try:
                 page_obj.open(dlg)
             except Exception:
-                page_obj.dialog = dlg
                 dlg.open = True
+                if dlg not in page_obj.overlay:
+                    page_obj.overlay.append(dlg)
                 page_obj.update()
 
     def _fermer_dialogue(self, dlg):
-        page_obj = self.page or getattr(self.app, "page", None)
+        page_obj = self.get_page()
         if page_obj:
             try:
                 page_obj.close(dlg)
@@ -347,7 +374,7 @@ class ArticlesView(ft.Container):
                 dlg.open = False
                 page_obj.update()
 
-    def supprimer_article(self, article):
+    def supprimer_article(self, e, article):
         def confirmation_action(confirme):
             self._fermer_dialogue(dlg)
             if confirme:
@@ -363,15 +390,23 @@ class ArticlesView(ft.Container):
             title=ft.Text("🚨 Suppression"),
             content=ft.Text(f"Voulez-vous vraiment supprimer l'article '{article.get('designation', '')}' ?"),
             actions=[
-                ft.TextButton("Annuler", on_click=lambda _: confirmation_action(False)),
-                ft.ElevatedButton("Supprimer", bgcolor="#B91C1C", color="white", on_click=lambda _: confirmation_action(True)),
+                ft.TextButton(
+                    content=ft.Text("Annuler"),
+                    on_click=lambda _: confirmation_action(False)
+                ),
+                ft.ElevatedButton(
+                    content=ft.Text("Supprimer"),
+                    bgcolor="#B91C1C",
+                    color="white",
+                    on_click=lambda _: confirmation_action(True)
+                ),
             ],
         )
         self._ouvrir_dialogue(dlg)
 
     def _show_snackbar(self, message: str, is_error: bool = False):
         color = "#B91C1C" if is_error else "#15803D"
-        page_obj = self.page or getattr(self.app, "page", None)
+        page_obj = self.get_page()
         if page_obj:
             snack = ft.SnackBar(content=ft.Text(message), bgcolor=color)
             try:
