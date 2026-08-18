@@ -3,6 +3,13 @@ import shutil
 from pathlib import Path
 import flet as ft
 
+
+def safe_border(width=1, color="#2A2A32"):
+    """Bordure universelle sécurisée compatible Desktop et Mobile."""
+    side = ft.BorderSide(width, color)
+    return ft.Border(top=side, right=side, bottom=side, left=side)
+
+
 class ClientsView(ft.Container):
     """Vue Flet pour la gestion de la base clients et pièces jointes (Responsive)."""
 
@@ -11,38 +18,49 @@ class ClientsView(ft.Container):
         self.app = app
         self.expand = True
         self.padding = 10
-        
+
         # États de contrôle
         self.editing_idx = None
         self.opened_docs_idx = None
-        
+
         # FilePicker multiplateforme
-        self.file_picker = ft.FilePicker(on_result=self.on_file_picker_result)
-        
+        self.file_picker = ft.FilePicker()
+        self.file_picker.on_result = self.on_file_picker_result
+
         # Couleur d'accentuation
         self.accent_color = "#2B719E"
         if hasattr(self.app, "entreprise") and isinstance(self.app.entreprise, dict):
             self.accent_color = self.app.entreprise.get("accent_color", "#2B719E")
-            
+
         self.setup_ui()
 
     def did_mount(self):
         """Attache l'explorateur de fichiers au montage du composant."""
-        if self.page and self.file_picker not in self.page.overlay:
-            self.page.overlay.append(self.file_picker)
-            self.page.update()
+        page_obj = self.page or getattr(self.app, "page", None)
+        if page_obj and self.file_picker not in page_obj.overlay:
+            page_obj.overlay.append(self.file_picker)
+            page_obj.update()
         self.refresh_client_list(force_update=False)
 
     def setup_ui(self):
         """Initialise l'interface utilisateur."""
         title = ft.Row([
-            ft.IconButton("arrow_back_rounded", on_click=lambda e: self.app.navigate_to("Dashboard")),
+            ft.IconButton(
+                icon="arrow_back",
+                tooltip="Retour",
+                on_click=lambda e: self.app.navigate_to("Dashboard")
+            ),
             ft.Text("👥 Répertoire Clients", size=20, weight=ft.FontWeight.BOLD)
         ])
 
         # --- FORMULAIRE (Gauche) ---
-        self.lbl_form_title = ft.Text("📝 Ajouter un nouveau client", size=14, weight=ft.FontWeight.BOLD, color=self.accent_color)
-        
+        self.lbl_form_title = ft.Text(
+            "📝 Ajouter un nouveau client",
+            size=14,
+            weight=ft.FontWeight.BOLD,
+            color=self.accent_color
+        )
+
         self.fields = {}
         fields_config = [
             ("nom", "Nom / Raison Sociale *", "Ex: Entreprise Martin, Jean Dupont..."),
@@ -58,7 +76,7 @@ class ClientsView(ft.Container):
         ]
 
         form_controls = [self.lbl_form_title]
-        
+
         for key, label, placeholder in fields_config:
             entry = ft.TextField(
                 label=label,
@@ -86,7 +104,7 @@ class ClientsView(ft.Container):
             style=ft.ButtonStyle(color="white", shape=ft.RoundedRectangleBorder(radius=6)),
             on_click=lambda e: self.vider_champs()
         )
-        
+
         form_controls.append(ft.Row([self.btn_save, self.btn_cancel], spacing=10))
 
         form_frame = ft.Container(
@@ -94,7 +112,7 @@ class ClientsView(ft.Container):
             bgcolor="#1A1A1C",
             padding=15,
             border_radius=12,
-            border=ft.border.all(1, "#2A2A32"),
+            border=safe_border(1, "#2A2A32"),
             col={"sm": 12, "md": 4}
         )
 
@@ -109,13 +127,13 @@ class ClientsView(ft.Container):
         )
 
         self.list_column = ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, spacing=10)
-        
+
         list_container = ft.Container(
             content=self.list_column,
             bgcolor="#141416",
             padding=10,
             border_radius=12,
-            border=ft.border.all(1, "#2A2A2E"),
+            border=safe_border(1, "#2A2A2E"),
             expand=True
         )
 
@@ -158,7 +176,7 @@ class ClientsView(ft.Container):
                     padding=30
                 )
             )
-            if force_update and self.page: 
+            if force_update and self.page:
                 self.page.update()
             return
 
@@ -171,7 +189,7 @@ class ClientsView(ft.Container):
             ville = str(client.get("ville", "")).lower()
 
             if search_term and not (search_term in nom or search_term in email or search_term in tel or search_term in ville):
-                continue  
+                continue
 
             visible_clients += 1
 
@@ -193,13 +211,37 @@ class ClientsView(ft.Container):
             )
 
             doc_count = len(client["documents"])
-            
+
             actions_row = ft.Row(
                 controls=[
-                    ft.IconButton(icon=ft.Icons.EDIT, icon_size=18, icon_color="#38BDF8", tooltip="Modifier", on_click=lambda e, i=idx, c=client: self.charger_client(i, c)),
-                    ft.IconButton(icon=ft.Icons.PICTURE_AS_PDF, icon_size=18, icon_color="#9CA3AF", tooltip="Fiche PDF", on_click=lambda e, cl=client: self.ouvrir_fiche_pdf(cl)),
-                    ft.IconButton(icon=ft.Icons.FOLDER, icon_size=18, icon_color="#4ADE80", tooltip=f"Docs ({doc_count})", on_click=lambda e, i=idx: self.toggle_documents_panel(i)),
-                    ft.IconButton(icon=ft.Icons.DELETE, icon_size=18, icon_color="#F87171", tooltip="Supprimer", on_click=lambda e, i=idx: self.confirm_supprimer_client(i))
+                    ft.IconButton(
+                        icon="edit",
+                        icon_size=18,
+                        icon_color="#38BDF8",
+                        tooltip="Modifier",
+                        on_click=lambda e, i=idx, c=client: self.charger_client(i, c)
+                    ),
+                    ft.IconButton(
+                        icon="picture_as_pdf",
+                        icon_size=18,
+                        icon_color="#9CA3AF",
+                        tooltip="Fiche PDF",
+                        on_click=lambda e, cl=client: self.ouvrir_fiche_pdf(cl)
+                    ),
+                    ft.IconButton(
+                        icon="folder",
+                        icon_size=18,
+                        icon_color="#4ADE80",
+                        tooltip=f"Docs ({doc_count})",
+                        on_click=lambda e, i=idx: self.toggle_documents_panel(i)
+                    ),
+                    ft.IconButton(
+                        icon="delete",
+                        icon_size=18,
+                        icon_color="#F87171",
+                        tooltip="Supprimer",
+                        on_click=lambda e, i=idx: self.confirm_supprimer_client(i)
+                    )
                 ],
                 alignment=ft.MainAxisAlignment.END,
                 spacing=0
@@ -207,7 +249,11 @@ class ClientsView(ft.Container):
 
             card_content = ft.Column(
                 controls=[
-                    ft.Row(controls=[text_block, actions_row], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+                    ft.Row(
+                        controls=[text_block, actions_row],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER
+                    )
                 ],
                 spacing=10
             )
@@ -218,11 +264,11 @@ class ClientsView(ft.Container):
             card = ft.Container(
                 content=card_content,
                 bgcolor="#242426",
-                border=ft.border.all(1, "#3A3A3C"),
+                border=safe_border(1, "#3A3A3C"),
                 border_radius=8,
                 padding=12
             )
-            
+
             self.list_column.controls.append(card)
 
         if visible_clients == 0 and search_term:
@@ -275,7 +321,7 @@ class ClientsView(ft.Container):
         )
 
         rows_column = ft.Column(spacing=5)
-        
+
         if not client["documents"]:
             rows_column.controls.append(
                 ft.Text("Aucun document rattaché à ce client.", size=11, italic=True, color="#636366")
@@ -284,7 +330,7 @@ class ClientsView(ft.Container):
             colors = {"Contrat": "#3B82F6", "Facture": "#10B981", "Devis": "#F59E0B", "Attestation": "#8B5CF6"}
             for doc_idx, doc in enumerate(client["documents"]):
                 badge_color = colors.get(doc.get('categorie', ''), "#6B7280")
-                
+
                 row = ft.Container(
                     content=ft.Row(
                         controls=[
@@ -297,8 +343,20 @@ class ClientsView(ft.Container):
                             ft.Text(doc.get("nom", ""), size=11, color="#E5E7EB", expand=True),
                             ft.Row(
                                 controls=[
-                                    ft.IconButton(icon=ft.Icons.REMOVE_RED_EYE, icon_size=16, icon_color="#9CA3AF", tooltip="Ouvrir", on_click=lambda e, d=doc: self.ouvrir_pdf(d)),
-                                    ft.IconButton(icon=ft.Icons.DELETE, icon_size=16, icon_color="#F87171", tooltip="Supprimer", on_click=lambda e, c_idx=client_idx, d_idx=doc_idx: self.confirm_supprimer_pdf(c_idx, d_idx))
+                                    ft.IconButton(
+                                        icon="remove_red_eye",
+                                        icon_size=16,
+                                        icon_color="#9CA3AF",
+                                        tooltip="Ouvrir",
+                                        on_click=lambda e, d=doc: self.ouvrir_pdf(d)
+                                    ),
+                                    ft.IconButton(
+                                        icon="delete",
+                                        icon_size=16,
+                                        icon_color="#F87171",
+                                        tooltip="Supprimer",
+                                        on_click=lambda e, c_idx=client_idx, d_idx=doc_idx: self.confirm_supprimer_pdf(c_idx, d_idx)
+                                    )
                                 ],
                                 spacing=0
                             )
@@ -321,7 +379,7 @@ class ClientsView(ft.Container):
                 spacing=8
             ),
             bgcolor="#1A1A1C",
-            border=ft.border.all(1, "#48484A"),
+            border=safe_border(1, "#48484A"),
             border_radius=6,
             padding=10
         )
@@ -336,27 +394,27 @@ class ClientsView(ft.Container):
         """Copie physiquement le fichier sélectionné vers le dossier de l'application."""
         if not e.files:
             return
-            
+
         client_idx = getattr(self, "current_upload_client_idx", None)
         categorie = getattr(self, "current_upload_categorie", "Autre")
         if client_idx is None or client_idx >= len(self.app.clients):
             return
-            
+
         client = self.app.clients[client_idx]
         picked_file = e.files[0]
-        
+
         try:
             source_path = picked_file.path
             if not source_path:
                 return
-                
+
             base_dir = Path(getattr(self.app, "data_dir", "data")) / "documents_clients"
             nom_propre = "".join(c for c in client.get("nom", "Inconnu") if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")
             client_dir = base_dir / nom_propre
             client_dir.mkdir(parents=True, exist_ok=True)
 
             dest_file = client_dir / picked_file.name
-            
+
             compteur = 1
             while dest_file.exists():
                 dest_file = client_dir / f"{Path(picked_file.name).stem}_{compteur}{Path(picked_file.name).suffix}"
@@ -379,7 +437,7 @@ class ClientsView(ft.Container):
                 self.app.save_data()
             self.refresh_client_list()
             self.show_snack("Document rattaché avec succès !")
-            
+
         except Exception as ex:
             self.show_snack(f"Erreur d'importation : {ex}", is_error=True)
 
@@ -400,7 +458,7 @@ class ClientsView(ft.Container):
         """Génère une fiche synthétique au format PDF pour le client sélectionné."""
         nom_clean = "".join(c for c in client.get("nom", "INCONNU") if c.isalnum()).upper()
         num_fiche = f"FICHE-CLI-{nom_clean[:12]}"
-        
+
         donnees_fiche = {
             "type_doc_interne": "fiche_contact",
             "type_contact": "client",
@@ -414,7 +472,7 @@ class ClientsView(ft.Container):
             "telephone": client.get("telephone", "-"),
             "pdf_path": client.get("pdf_path", "")
         }
-        
+
         self.app.current_document = donnees_fiche
         self.app.navigate_to("PDFViewer")
 
@@ -438,7 +496,7 @@ class ClientsView(ft.Container):
         self.lbl_form_title.color = self.accent_color
         self.btn_save.text = "💾 Enregistrer"
         self.btn_save.bgcolor = "#15803D"
-        
+
         for key in self.fields:
             self.fields[key].value = ""
         self.refresh_client_list()
@@ -520,14 +578,10 @@ class ClientsView(ft.Container):
     def show_confirm_dialog(self, title, message, on_confirm):
         """Affiche une boîte de dialogue modale de confirmation."""
         def close_dialog(e):
-            dialog.open = False
-            if self.page:
-                self.page.update()
-            
+            self._fermer_dialogue(dialog)
+
         def confirm_action(e):
-            dialog.open = False
-            if self.page:
-                self.page.update()
+            self._fermer_dialogue(dialog)
             on_confirm()
 
         dialog = ft.AlertDialog(
@@ -538,17 +592,36 @@ class ClientsView(ft.Container):
                 ft.TextButton("Confirmer", on_click=confirm_action, style=ft.ButtonStyle(color="#EF4444")),
             ],
         )
-        if self.page:
-            self.page.overlay.append(dialog)
-            dialog.open = True
-            self.page.update()
+        self._ouvrir_dialogue(dialog)
+
+    def _ouvrir_dialogue(self, dlg):
+        page_obj = self.page or getattr(self.app, "page", None)
+        if page_obj:
+            try:
+                page_obj.open(dlg)
+            except Exception:
+                page_obj.overlay.append(dlg)
+                dlg.open = True
+                page_obj.update()
+
+    def _fermer_dialogue(self, dlg):
+        page_obj = self.page or getattr(self.app, "page", None)
+        if page_obj:
+            try:
+                page_obj.close(dlg)
+            except Exception:
+                dlg.open = False
+                page_obj.update()
 
     def show_snack(self, message, is_error=False):
         """Affiche un toast informatif au bas de l'écran."""
-        if self.page:
-            self.page.snack_bar = ft.SnackBar(
-                content=ft.Text(message),
-                bgcolor="#B91C1C" if is_error else "#15803D"
-            )
-            self.page.snack_bar.open = True
-            self.page.update()
+        color = "#B91C1C" if is_error else "#15803D"
+        page_obj = self.page or getattr(self.app, "page", None)
+        if page_obj:
+            snack = ft.SnackBar(content=ft.Text(message), bgcolor=color)
+            try:
+                page_obj.open(snack)
+            except Exception:
+                page_obj.snack_bar = snack
+                snack.open = True
+                page_obj.update()
