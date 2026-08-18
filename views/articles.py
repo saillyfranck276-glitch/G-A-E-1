@@ -83,12 +83,12 @@ class ArticlesView(ft.Container):
                         ft.Text(
                             "📦 Prestations & Articles",
                             size=20,
-                            weight=ft.FontWeight.BOLD,
+                            weight="bold",
                         ),
                         ft.ElevatedButton(
                             "+ Nouvel Article",
                             bgcolor=self.accent_color,
-                            color=ft.colors.WHITE,
+                            color="white",
                             height=44,
                             on_click=lambda e: self.afficher_ecran_formulaire(),
                         ),
@@ -128,9 +128,7 @@ class ArticlesView(ft.Container):
             controls=[
                 ft.Row(
                     [
-                        ft.Text(
-                            titre_form, size=18, weight=ft.FontWeight.BOLD
-                        ),
+                        ft.Text(titre_form, size=18, weight="bold"),
                         ft.Container(expand=True),
                         ft.OutlinedButton(
                             "Retour",
@@ -186,8 +184,8 @@ class ArticlesView(ft.Container):
                         ),
                         ft.ElevatedButton(
                             "Enregistrer",
-                            bgcolor=ft.colors.GREEN_700,
-                            color=ft.colors.WHITE,
+                            bgcolor="#15803D",
+                            color="white",
                             height=48,
                             on_click=self.sauvegarder_fiche,
                         ),
@@ -208,13 +206,8 @@ class ArticlesView(ft.Container):
             border_radius=10,
             content=ft.Column(
                 [
-                    ft.Text(
-                        titre,
-                        size=14,
-                        weight=ft.FontWeight.BOLD,
-                        color=ft.colors.BLUE_200,
-                    ),
-                    ft.Divider(color=ft.colors.GREY_800, height=8),
+                    ft.Text(titre, size=14, weight="bold", color="#BFDBFE"),
+                    ft.Divider(color="#374151", height=8),
                     ft.Column(controls=composants, spacing=10),
                 ],
                 spacing=5,
@@ -240,9 +233,7 @@ class ArticlesView(ft.Container):
             self.list_column.controls.append(
                 ft.Container(
                     content=ft.Text(
-                        "Aucun article trouvé.",
-                        color=ft.colors.GREY_400,
-                        size=14,
+                        "Aucun article trouvé.", color="#9CA3AF", size=14
                     ),
                     padding=20,
                 )
@@ -276,7 +267,7 @@ class ArticlesView(ft.Container):
                                     ft.Text(
                                         article.get("designation", "Sans nom"),
                                         size=15,
-                                        weight=ft.FontWeight.BOLD,
+                                        weight="bold",
                                     ),
                                     ft.Container(
                                         content=ft.Text(
@@ -284,7 +275,7 @@ class ArticlesView(ft.Container):
                                                 "reference", "RÉF-N/A"
                                             ),
                                             size=10,
-                                            color=ft.colors.GREY_300,
+                                            color="#D1D5DB",
                                         ),
                                         bgcolor="#374151",
                                         padding=ft.padding.symmetric(
@@ -298,12 +289,12 @@ class ArticlesView(ft.Container):
                             ft.Text(
                                 f"Prix HT : {prix_ht:.2f} €  |  TVA : {tva}%  |  TTC : {prix_ttc:.2f} € ({article.get('unite', 'Unité')})",
                                 size=12,
-                                color=ft.colors.GREY_300,
+                                color="#D1D5DB",
                             ),
                             ft.Text(
                                 article.get("description", ""),
                                 size=11,
-                                color=ft.colors.GREY_400,
+                                color="#9CA3AF",
                                 max_lines=1,
                                 overflow=ft.TextOverflow.ELLIPSIS,
                             ),
@@ -315,14 +306,14 @@ class ArticlesView(ft.Container):
                         controls=[
                             ft.IconButton(
                                 icon="edit",
-                                icon_color=ft.colors.BLUE_300,
+                                icon_color="#93C5FD",
                                 on_click=lambda e, idx=index: self.afficher_ecran_formulaire(
                                     idx
                                 ),
                             ),
                             ft.IconButton(
                                 icon="delete",
-                                icon_color=ft.colors.RED_400,
+                                icon_color="#F87171",
                                 on_click=lambda e, idx=index: self.supprimer_fiche(
                                     idx
                                 ),
@@ -349,7 +340,7 @@ class ArticlesView(ft.Container):
             if page_obj:
                 page_obj.snack_bar = ft.SnackBar(
                     content=ft.Text("La désignation de l'article est obligatoire !"),
-                    bgcolor=ft.colors.RED_700,
+                    bgcolor="#B91C1C",
                 )
                 page_obj.snack_bar.open = True
                 page_obj.update()
@@ -368,7 +359,7 @@ class ArticlesView(ft.Container):
             if page_obj:
                 page_obj.snack_bar = ft.SnackBar(
                     content=ft.Text("Veuillez saisir un prix HT valide."),
-                    bgcolor=ft.colors.RED_700,
+                    bgcolor="#B91C1C",
                 )
                 page_obj.snack_bar.open = True
                 page_obj.update()
@@ -385,7 +376,7 @@ class ArticlesView(ft.Container):
             if page_obj:
                 page_obj.snack_bar = ft.SnackBar(
                     content=ft.Text("Veuillez saisir un taux de TVA valide."),
-                    bgcolor=ft.colors.RED_700,
+                    bgcolor="#B91C1C",
                 )
                 page_obj.snack_bar.open = True
                 page_obj.update()
@@ -443,8 +434,8 @@ class ArticlesView(ft.Container):
                 ),
                 ft.ElevatedButton(
                     "Supprimer",
-                    bgcolor=ft.colors.RED_700,
-                    color=ft.colors.WHITE,
+                    bgcolor="#B91C1C",
+                    color="white",
                     on_click=confirmer_suppression,
                 ),
             ],
