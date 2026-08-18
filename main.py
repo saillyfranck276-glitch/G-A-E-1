@@ -124,12 +124,12 @@ class FacturationAndroidApp:
     """Prépare l'interface avec en-tête mobile et menu déroulant sous-jacent."""
     nom_entreprise = self.entreprise.get("nom", "GESTION")
 
-    # 1. En-tête personnalisé Mobile (avec ft.icons.MENU)
-    self.menu_button = ft.IconButton(
-        icon=ft.icons.MENU,
-        icon_color="white",
-        icon_size=28,
+    # 1. En-tête personnalisé Mobile (Utilisation d'un conteneur cliquable sécurisé)
+    self.menu_button = ft.Container(
+        content=ft.Text("☰", size=24, color="white"),
+        padding=10,
         on_click=self.toggle_mobile_menu,
+        ink=True,
     )
 
     self.top_bar_title = ft.Text(
@@ -142,7 +142,7 @@ class FacturationAndroidApp:
     self.top_bar = ft.Container(
         height=56,
         bgcolor="#1A1A1C",
-        padding=10,
+        padding=5,
         content=ft.Row(
             controls=[
                 self.menu_button,
@@ -429,9 +429,7 @@ class FacturationAndroidApp:
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Icon(
-                        ft.icons.WARNING_AMBER_ROUNDED, size=80, color="orange"
-                    ),
+                    ft.Text("⚠️", size=60),
                     ft.Text(
                         f"Vue '{view_name}' introuvable.",
                         size=24,
@@ -448,7 +446,7 @@ class FacturationAndroidApp:
               alignment=ft.MainAxisAlignment.CENTER,
               horizontal_alignment=ft.CrossAxisAlignment.CENTER,
               controls=[
-                  ft.Icon(ft.icons.ERROR_OUTLINE, color="red", size=80),
+                  ft.Text("❌", size=60),
                   ft.Text(
                       "Erreur lors du chargement de la vue",
                       size=22,
