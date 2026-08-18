@@ -3,99 +3,252 @@ import flet as ft
 
 class ClientsView(ft.Container):
     def __init__(self, app):
-        super().__init__(expand=True, padding=15)
+        super().__init__(expand=True)
         self.app = app
+        self.accent_color = getattr(self.app, "entreprise", {}).get(
+            "accent_color", "#2B719E"
+        )
         self.clients = getattr(self.app, "clients", [])
+        self.current_editing_index = None
 
-        # Icône en chaîne texte brute (zéro crash Android)
-        self.search_field = ft.TextField(
-            hint_text="Rechercher un client...",
-            prefix_icon="search",
-            on_change=self._filtrer_clients,
+        # --- COMPOSANTS DU FORMULAIRE ---
+        self.input_nom = ft.TextField(
+            label="Nom / Raison Sociale *", expand=True
+        )
+        self.input_email = ft.TextField(
+            label="Adresse Email",
             expand=True,
-            bgcolor="#1A1A1C",
+            keyboard_type=ft.KeyboardType.EMAIL,
+        )
+        self.input_telephone = ft.TextField(
+            label="Téléphone",
+            expand=True,
+            keyboard_type=ft.KeyboardType.PHONE,
+        )
+        self.input_adresse = ft.TextField(
+            label="Adresse (Rue / Voie)", expand=True
+        )
+        self.input_cp = ft.TextField(
+            label="Code Postal",
+            expand=True,
+            keyboard_type=ft.KeyboardType.NUMBER,
+        )
+        self.input_ville = ft.TextField(label="Ville", expand=True)
+        self.input_siret = ft.TextField(label="N° SIRET", expand=True)
+
+        # --- COMPOSANTS DE L'ÉCRAN LISTE ---
+        self.input_recherche = ft.TextField(
+            label="Rechercher un client (nom, email, ville)...",
+            prefix_icon="search",
+            expand=True,
+            on_change=self.filtrer_clients,
         )
 
-        self.list_column = ft.Column(
-            spacing=10, scroll=ft.ScrollMode.AUTO, expand=True
-        )
-        self._build_interface()
+        self.list_column = ft.Column(spacing=10, expand=True)
+        self.view_container = ft.Container(expand=True)
+        self.content = ft.Column([self.view_container], expand=True)
 
-    def get_page(self):
-        return self.page or getattr(self.app, "page", None)
+        self.afficher_ecran_liste()
 
-    def safe_update(self):
-        page = self.get_page()
-        if page:
-            try:
-                page.update()
-            except Exception:
-                pass
+    # ============================================================
+    # 🖥️ GESTION DES ÉCRANS (LISTE ↔ FORMULAIRE)
+    # ============================================================
 
-    def did_mount(self):
-        self.refresh_client_list()
+    def afficher_ecran_liste(self):
+        self.current_editing_index = None
+        self.load_clients_list()
 
-    def _build_interface(self):
-        entreprise = getattr(self.app, "entreprise", {})
-        accent_color = entreprise.get("accent_color", "#2B719E")
-
-        self.content = ft.Column(
+        self.view_container.content = ft.Column(
+            scroll=ft.ScrollMode.AUTO,
+            spacing=15,
+            expand=True,
             controls=[
                 ft.Row(
-                    controls=[
-                        ft.Text("👥 Gestion des Clients", size=22, weight="bold"),
+                    [
+                        ft.Text(
+                            "👥 Gestion des Clients",
+                            size=20,
+                            weight=ft.FontWeight.BOLD,
+                        ),
                         ft.ElevatedButton(
-                            content=ft.Text("+ Nouveau Client"),
-                            bgcolor=accent_color,
-                            color="white",
-                            on_click=lambda _: self._ouvrir_popup_client(),
+                            "+ Nouveau Client",
+                            bgcolor=self.accent_color,
+                            color=ft.colors.WHITE,
+                            height=44,
+                            on_click=lambda e: self.afficher_ecran_formulaire(),
                         ),
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
-                ft.Row(controls=[self.search_field]),
+                ft.Divider(),
+                ft.Row([self.input_recherche]),
                 ft.Container(
-                    content=self.list_column,
+                    bgcolor="#1F2937",
+                    padding=10,
+                    border_radius=10,
                     expand=True,
+                    content=self.list_column,
                 ),
             ],
-            spacing=15,
-            expand=True,
+        )
+        if self.page:
+            self.update()
+
+    def afficher_ecran_formulaire(self, index_client=None):
+        self.current_editing_index = index_client
+        titre_form = (
+            "Modifier le client"
+            if index_client is not None
+            else "Créer une fiche client"
         )
 
-    def refresh_client_list(self, filtre=""):
-        self.list_column.controls.clear()
-        filtre_lower = filtre.lower().strip()
+        if index_client is not None:
+            self.pre_remplir_formulaire(index_client)
+        else:
+            self.vider_formulaire()
 
-        clients_a_afficher = [
-            c
-            for c in self.clients
+        self.view_container.content = ft.Column(
+            scroll=ft.ScrollMode.AUTO,
+            spacing=20,
+            controls=[
+                ft.Row(
+                    [
+                        ft.Text(
+                            titre_form, size=18, weight=ft.FontWeight.BOLD
+                        ),
+                        ft.Container(expand=True),
+                        ft.OutlinedButton(
+                            "Retour",
+                            on_click=lambda e: self.afficher_ecran_liste(),
+                        ),
+                    ]
+                ),
+                ft.Divider(),
+                self.creer_section_card(
+                    "1. Identité & Informations Légales",
+                    [
+                        ft.ResponsiveRow(
+                            [
+                                ft.Container(
+                                    self.input_nom, col={"sm": 12, "md": 8}
+                                ),
+                                ft.Container(
+                                    self.input_siret, col={"sm": 12, "md": 4}
+                                ),
+                            ]
+                        )
+                    ],
+                ),
+                self.creer_section_card(
+                    "2. Coordonnées de Contact",
+                    [
+                        ft.ResponsiveRow(
+                            [
+                                ft.Container(
+                                    self.input_email, col={"sm": 12, "md": 6}
+                                ),
+                                ft.Container(
+                                    self.input_telephone,
+                                    col={"sm": 12, "md": 6},
+                                ),
+                            ]
+                        )
+                    ],
+                ),
+                self.creer_section_card(
+                    "3. Adresse de Facturation",
+                    [
+                        ft.Row([self.input_adresse]),
+                        ft.ResponsiveRow(
+                            [
+                                ft.Container(
+                                    self.input_cp, col={"sm": 12, "md": 4}
+                                ),
+                                ft.Container(
+                                    self.input_ville, col={"sm": 12, "md": 8}
+                                ),
+                            ]
+                        ),
+                    ],
+                ),
+                ft.Row(
+                    [
+                        ft.TextButton(
+                            "Annuler",
+                            on_click=lambda e: self.afficher_ecran_liste(),
+                        ),
+                        ft.ElevatedButton(
+                            "Enregistrer",
+                            bgcolor=ft.colors.GREEN_700,
+                            color=ft.colors.WHITE,
+                            height=48,
+                            on_click=self.sauvegarder_fiche,
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.END,
+                    spacing=10,
+                ),
+                ft.Container(height=20),
+            ],
+        )
+        if self.page:
+            self.update()
+
+    def creer_section_card(self, titre, composants):
+        return ft.Container(
+            bgcolor="#1F2937",
+            padding=15,
+            border_radius=10,
+            content=ft.Column(
+                [
+                    ft.Text(
+                        titre,
+                        size=14,
+                        weight=ft.FontWeight.BOLD,
+                        color=ft.colors.BLUE_200,
+                    ),
+                    ft.Divider(color=ft.colors.GREY_800, height=8),
+                    ft.Column(controls=composants, spacing=10),
+                ],
+                spacing=5,
+            ),
+        )
+
+    # ============================================================
+    # 🛠️ GESTION DES DONNÉES (CRUD)
+    # ============================================================
+
+    def load_clients_list(self, filtre_texte=""):
+        self.list_column.controls.clear()
+        filtre_lower = filtre_texte.lower().strip()
+
+        clients_filtrés = [
+            (idx, c)
+            for idx, c in enumerate(self.clients)
             if filtre_lower in c.get("nom", "").lower()
             or filtre_lower in c.get("email", "").lower()
             or filtre_lower in c.get("ville", "").lower()
         ]
 
-        if not clients_a_afficher:
+        if not clients_filtrés:
             self.list_column.controls.append(
                 ft.Container(
                     content=ft.Text(
-                        "Aucun client trouvé.", color="#8E8E93", size=14
+                        "Aucun client trouvé.",
+                        color=ft.colors.GREY_400,
+                        size=14,
                     ),
                     padding=20,
-                    alignment="center",
                 )
             )
         else:
-            for c in clients_a_afficher:
-                self.list_column.controls.append(self._creer_carte_client(c))
+            for idx, c in clients_filtrés:
+                self.list_column.controls.append(
+                    self.creer_carte_client(idx, c)
+                )
 
-        self.safe_update()
-
-    def _filtrer_clients(self, e):
-        self.refresh_client_list(e.control.value)
-
-    def _creer_carte_client(self, client):
-        adresse_complete = f"{client.get('adresse', '')} {client.get('code_postal', '')} {client.get('ville', '')}".strip()
+    def creer_carte_client(self, index, client):
+        adresse = f"{client.get('adresse', '')} {client.get('code_postal', '')} {client.get('ville', '')}".strip()
 
         return ft.Container(
             content=ft.Row(
@@ -105,17 +258,19 @@ class ClientsView(ft.Container):
                             ft.Text(
                                 client.get("nom", "Sans nom"),
                                 size=15,
-                                weight="bold",
+                                weight=ft.FontWeight.BOLD,
                             ),
                             ft.Text(
                                 f"📧 {client.get('email', 'N/A')}  |  📞 {client.get('telephone', 'N/A')}",
                                 size=12,
-                                color="#AEAEB2",
+                                color=ft.colors.GREY_300,
                             ),
                             ft.Text(
-                                f"📍 {adresse_complete}" if adresse_complete else "📍 Adresse non renseignée",
+                                f"📍 {adresse}"
+                                if adresse
+                                else "📍 Adresse non renseignée",
                                 size=11,
-                                color="#8E8E93",
+                                color=ft.colors.GREY_400,
                             ),
                         ],
                         spacing=3,
@@ -125,16 +280,16 @@ class ClientsView(ft.Container):
                         controls=[
                             ft.IconButton(
                                 icon="edit",
-                                icon_color="#3B82F6",
-                                on_click=lambda _, c=client: self._ouvrir_popup_client(
-                                    c
+                                icon_color=ft.colors.BLUE_300,
+                                on_click=lambda e, idx=index: self.afficher_ecran_formulaire(
+                                    idx
                                 ),
                             ),
                             ft.IconButton(
                                 icon="delete",
-                                icon_color="#EF4444",
-                                on_click=lambda _, c=client: self._supprimer_client(
-                                    c
+                                icon_color=ft.colors.RED_400,
+                                on_click=lambda e, idx=index: self.supprimer_fiche(
+                                    idx
                                 ),
                             ),
                         ],
@@ -143,201 +298,110 @@ class ClientsView(ft.Container):
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
-            bgcolor="#1E1E20",
+            bgcolor="#111827",
             padding=12,
             border_radius=8,
-            border=ft.border.all(1, "#2A2A2E"),
+            border=ft.border.all(1, "#374151"),
         )
 
-    def _ouvrir_popup_client(self, client=None):
-        est_edition = client is not None
-        client_data = client or {}
-
-        tf_nom = ft.TextField(
-            label="Nom / Raison Sociale *",
-            value=str(client_data.get("nom", "")),
-            bgcolor="#1A1A1C",
-        )
-        tf_email = ft.TextField(
-            label="Email",
-            value=str(client_data.get("email", "")),
-            bgcolor="#1A1A1C",
-        )
-        tf_tel = ft.TextField(
-            label="Téléphone",
-            value=str(client_data.get("telephone", "")),
-            bgcolor="#1A1A1C",
-        )
-        tf_adresse = ft.TextField(
-            label="Adresse",
-            value=str(client_data.get("adresse", "")),
-            bgcolor="#1A1A1C",
-        )
-        tf_cp = ft.TextField(
-            label="Code Postal",
-            value=str(client_data.get("code_postal", "")),
-            bgcolor="#1A1A1C",
-        )
-        tf_ville = ft.TextField(
-            label="Ville",
-            value=str(client_data.get("ville", "")),
-            bgcolor="#1A1A1C",
-        )
-        tf_siret = ft.TextField(
-            label="SIRET",
-            value=str(client_data.get("siret", "")),
-            bgcolor="#1A1A1C",
-        )
-
-        def fermer():
-            self._fermer_dialogue(dialog)
-
-        def enregistrer(e):
-            if not tf_nom.value or not tf_nom.value.strip():
-                self.show_snack(
-                    "Le nom du client est obligatoire !", is_error=True
+    def sauvegarder_fiche(self, e):
+        if not self.input_nom.value or not self.input_nom.value.strip():
+            page_obj = self.page or getattr(self.app, "page", None)
+            if page_obj:
+                page_obj.snack_bar = ft.SnackBar(
+                    content=ft.Text("Le nom du client est obligatoire !"),
+                    bgcolor=ft.colors.RED_700,
                 )
-                return
+                page_obj.snack_bar.open = True
+                page_obj.update()
+            return
 
-            client_data.update(
-                {
-                    "nom": tf_nom.value.strip(),
-                    "email": tf_email.value.strip() if tf_email.value else "",
-                    "telephone": tf_tel.value.strip() if tf_tel.value else "",
-                    "adresse": tf_adresse.value.strip() if tf_adresse.value else "",
-                    "code_postal": tf_cp.value.strip() if tf_cp.value else "",
-                    "ville": tf_ville.value.strip() if tf_ville.value else "",
-                    "siret": tf_siret.value.strip() if tf_siret.value else "",
-                }
-            )
+        dict_client = {
+            "nom": self.input_nom.value.strip(),
+            "email": self.input_email.value.strip() if self.input_email.value else "",
+            "telephone": self.input_telephone.value.strip() if self.input_telephone.value else "",
+            "adresse": self.input_adresse.value.strip() if self.input_adresse.value else "",
+            "code_postal": self.input_cp.value.strip() if self.input_cp.value else "",
+            "ville": self.input_ville.value.strip() if self.input_ville.value else "",
+            "siret": self.input_siret.value.strip() if self.input_siret.value else "",
+        }
 
-            if not est_edition:
-                client_data["id"] = len(self.clients) + 1
-                self.clients.append(client_data)
+        if self.current_editing_index is not None:
+            self.clients[self.current_editing_index] = dict_client
+        else:
+            dict_client["id"] = len(self.clients) + 1
+            self.clients.append(dict_client)
 
-            if hasattr(self.app, "save_data"):
-                self.app.save_data()
+        if hasattr(self.app, "save_data"):
+            self.app.save_data()
 
-            fermer()
-            self.refresh_client_list(self.search_field.value)
-            self.show_snack("Client enregistré avec succès ! ✔")
+        self.afficher_ecran_liste()
 
-        entreprise = getattr(self.app, "entreprise", {})
-        accent_color = entreprise.get("accent_color", "#2B719E")
+    def supprimer_fiche(self, index):
+        page_obj = self.page or getattr(self.app, "page", None)
 
-        # Container fixe à 300px avec scroll pour compatibilité clavier mobile
-        dialog = ft.AlertDialog(
-            title=ft.Text(
-                "Éditer Client" if est_edition else "Nouveau Client",
-                size=18,
-                weight="bold",
-            ),
-            content=ft.Container(
-                content=ft.Column(
-                    controls=[
-                        tf_nom,
-                        tf_email,
-                        tf_tel,
-                        tf_adresse,
-                        tf_cp,
-                        tf_ville,
-                        tf_siret,
-                    ],
-                    spacing=10,
-                    scroll=ft.ScrollMode.AUTO,
-                ),
-                width=320,
-                height=300,
-            ),
-            actions=[
-                ft.TextButton(
-                    content=ft.Text("Annuler"), on_click=lambda _: fermer()
-                ),
-                ft.ElevatedButton(
-                    content=ft.Text("Enregistrer"),
-                    bgcolor=accent_color,
-                    color="white",
-                    on_click=enregistrer,
-                ),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-        )
-
-        self._ouvrir_dialogue(dialog)
-
-    def _supprimer_client(self, client):
-        def fermer():
-            self._fermer_dialogue(dialog)
-
-        def confirmer(_):
-            if client in self.clients:
-                self.clients.remove(client)
+        def confirmer_suppression(e):
+            if index < len(self.clients):
+                self.clients.pop(index)
                 if hasattr(self.app, "save_data"):
                     self.app.save_data()
-                self.refresh_client_list(self.search_field.value)
-                self.show_snack("Client supprimé.")
-            fermer()
+            dialog_confirmation.open = False
+            if page_obj:
+                page_obj.update()
+            self.afficher_ecran_liste()
 
-        dialog = ft.AlertDialog(
-            title=ft.Text("Confirmer la suppression"),
+        dialog_confirmation = ft.AlertDialog(
+            title=ft.Text("⚠️ Suppression", size=16),
             content=ft.Text(
-                f"Voulez-vous vraiment supprimer {client.get('nom')} ?"
+                f"Supprimer le client '{self.clients[index].get('nom')}' ?"
             ),
             actions=[
                 ft.TextButton(
-                    content=ft.Text("Annuler"), on_click=lambda _: fermer()
+                    "Annuler",
+                    on_click=lambda e: setattr(
+                        dialog_confirmation, "open", False
+                    )
+                    or page_obj.update(),
                 ),
                 ft.ElevatedButton(
-                    content=ft.Text("Supprimer"),
-                    bgcolor="#B91C1C",
-                    color="white",
-                    on_click=confirmer,
+                    "Supprimer",
+                    bgcolor=ft.colors.RED_700,
+                    color=ft.colors.WHITE,
+                    on_click=confirmer_suppression,
                 ),
             ],
-            actions_alignment=ft.MainAxisAlignment.END,
         )
+        if page_obj:
+            if dialog_confirmation not in page_obj.overlay:
+                page_obj.overlay.append(dialog_confirmation)
+            dialog_confirmation.open = True
+            page_obj.update()
 
-        self._ouvrir_dialogue(dialog)
+    # ============================================================
+    # ⚙️ FONCTIONS AUXILIAIRES
+    # ============================================================
 
-    def _ouvrir_dialogue(self, dlg):
-        page = self.get_page()
-        if not page:
-            return
-        if hasattr(page, "open"):
-            try:
-                page.open(dlg)
-                return
-            except Exception:
-                pass
-        dlg.open = True
-        if dlg not in page.overlay:
-            page.overlay.append(dlg)
-        page.update()
+    def filtrer_clients(self, e):
+        txt = self.input_recherche.value or ""
+        self.load_clients_list(filtre_texte=txt)
+        if self.page:
+            self.list_column.update()
 
-    def _fermer_dialogue(self, dlg):
-        page = self.get_page()
-        if not page:
-            return
-        if hasattr(page, "close"):
-            try:
-                page.close(dlg)
-                return
-            except Exception:
-                pass
-        dlg.open = False
-        page.update()
+    def pre_remplir_formulaire(self, index):
+        c = self.clients[index]
+        self.input_nom.value = c.get("nom", "")
+        self.input_email.value = c.get("email", "")
+        self.input_telephone.value = c.get("telephone", "")
+        self.input_adresse.value = c.get("adresse", "")
+        self.input_cp.value = c.get("code_postal", "")
+        self.input_ville.value = c.get("ville", "")
+        self.input_siret.value = c.get("siret", "")
 
-    def show_snack(self, message, is_error=False):
-        color = "#B91C1C" if is_error else "#15803D"
-        page = self.get_page()
-        if page:
-            snack = ft.SnackBar(content=ft.Text(message), bgcolor=color)
-            if hasattr(page, "open"):
-                try:
-                    page.open(snack)
-                    return
-                except Exception:
-                    pass
-            page.snack_bar = snack
-            snack.open = True
-            page.update()
+    def vider_formulaire(self):
+        self.input_nom.value = ""
+        self.input_email.value = ""
+        self.input_telephone.value = ""
+        self.input_adresse.value = ""
+        self.input_cp.value = ""
+        self.input_ville.value = ""
+        self.input_siret.value = ""
