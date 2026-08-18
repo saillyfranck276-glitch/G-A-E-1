@@ -93,7 +93,7 @@ class FacturationView(ft.Container):
         self.padding = 10
         self.accent_color = "#2B719E"
 
-        # Instanciation sécurisée du FilePicker (évite le crash si non supporté sur la plateforme)
+        # Instanciation sécurisée du FilePicker
         self.csv_picker = None
         try:
             self.csv_picker = ft.FilePicker()
@@ -160,17 +160,21 @@ class FacturationView(ft.Container):
         return self.page.width < 768 if self.page else False
 
     def _build_interface(self):
-        icon_back = getattr(ft.icons, "ARROW_BACK_ROUNDED", "arrow_back")
-
+        # Utilisation explicite du nom textuel pour éviter l'erreur IconButton
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    icon=icon_back,
+                    icon="arrow_back",
+                    icon_color="white",
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
                 ft.Text("📂 Factures & Devis", size=20, weight=ft.FontWeight.BOLD),
             ],
             alignment=ft.MainAxisAlignment.START,
+        )
+
+        button_style = ft.ButtonStyle(
+            shape=ft.RoundedRectangleBorder(radius=8),
         )
 
         toolbar = ft.ResponsiveRow(
@@ -181,10 +185,12 @@ class FacturationView(ft.Container):
                             "➕ Nouveau Devis",
                             bgcolor=self.accent_color,
                             color="white",
+                            height=42,
+                            style=button_style,
                             on_click=lambda e: self.app.navigate_to("NouveauDevis"),
                         )
                     ],
-                    col={"sm": 6, "md": 3},
+                    col={"xs": 6, "sm": 6, "md": 3},
                 ),
                 ft.Column(
                     [
@@ -192,12 +198,14 @@ class FacturationView(ft.Container):
                             "➕ Nouvelle Facture",
                             bgcolor=self.accent_color,
                             color="white",
+                            height=42,
+                            style=button_style,
                             on_click=lambda e: self.app.navigate_to(
                                 "NouvelleFacture"
                             ),
                         )
                     ],
-                    col={"sm": 6, "md": 3},
+                    col={"xs": 6, "sm": 6, "md": 3},
                 ),
             ],
             spacing=10,
@@ -226,60 +234,67 @@ class FacturationView(ft.Container):
             show_checkbox_column=False,
         )
 
-        def btn_grid(text, icon_key, color, action):
-            icon_obj = getattr(ft.icons, icon_key.upper(), icon_key)
+        def btn_grid(text, icon_name, color, action):
             return ft.Column(
                 [
                     ft.ElevatedButton(
                         content=ft.Row(
-                            [ft.Icon(icon_obj, size=16), ft.Text(text, size=12)],
+                            [
+                                ft.Icon(icon_name, size=16, color="white"),
+                                ft.Text(text, size=12, color="white"),
+                            ],
                             spacing=6,
                             alignment=ft.MainAxisAlignment.CENTER,
                         ),
                         bgcolor=color,
-                        color="white",
+                        height=42,
+                        style=ft.ButtonStyle(
+                            shape=ft.RoundedRectangleBorder(radius=8),
+                            padding=ft.padding.symmetric(
+                                horizontal=10, vertical=5
+                            ),
+                        ),
                         on_click=action,
-                        style=ft.ButtonStyle(padding=10),
                     )
                 ],
-                col={"sm": 6, "md": 3, "lg": 3},
+                col={"xs": 6, "sm": 6, "md": 3, "lg": 3},
             )
 
         actions_grid = ft.ResponsiveRow(
             controls=[
                 btn_grid(
                     "Voir PDF",
-                    "PICTURE_AS_PDF",
+                    "picture_as_pdf",
                     "#2B719E",
                     self.ouvrir_pdf_selectionne,
                 ),
                 btn_grid(
                     "Générer PDF",
-                    "SAVE_ALT",
+                    "save_alt",
                     "#8B5CF6",
                     self.exporter_pdf_organise,
                 ),
                 btn_grid(
-                    "Modifier", "EDIT", "#F59E0B", self.modifier_selectionne
+                    "Modifier", "edit", "#F59E0B", self.modifier_selectionne
                 ),
                 btn_grid(
-                    "Marquer Payée", "EURO", "#10B981", self.marquer_payee
+                    "Marquer Payée", "euro", "#10B981", self.marquer_payee
                 ),
                 btn_grid(
-                    "URSSAF", "CHECK_CIRCLE", "#16A34A", self.declarer_urssaf
+                    "URSSAF", "check_circle", "#16A34A", self.declarer_urssaf
                 ),
                 btn_grid(
                     "Convertir Devis",
-                    "TRANSFORM",
+                    "transform",
                     "#0EA5E9",
                     self.convertir_devis_en_facture,
                 ),
                 btn_grid(
-                    "Export CSV", "TABLE_CHART", "#4F46E5", self.exporter_csv
+                    "Export CSV", "table_chart", "#4F46E5", self.exporter_csv
                 ),
                 btn_grid(
                     "Supprimer",
-                    "DELETE",
+                    "delete",
                     "#DC2626",
                     self.supprimer_selectionne,
                 ),
