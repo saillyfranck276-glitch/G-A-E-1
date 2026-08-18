@@ -1,23 +1,27 @@
-from datetime import datetime
-import re
 import csv
+from datetime import datetime
 import os
+from pathlib import Path
+import re
 import flet as ft
 
 # --- IMPORTS OPTIONNELS REPORTLAB & PYHANKO ---
+REPORTLAB_AVAILABLE = False
 try:
-  from reportlab.pdfgen import canvas
-  from reportlab.lib.pagesizes import A4
   from reportlab.lib import colors
+  from reportlab.lib.pagesizes import A4
+  from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+  from reportlab.pdfgen import canvas
   from reportlab.platypus import (
-      SimpleDocTemplate,
+      Image,
       Paragraph,
+      SimpleDocTemplate,
       Spacer,
       Table,
       TableStyle,
-      Image,
   )
-  from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+  REPORTLAB_AVAILABLE = True
 except ImportError:
   pass
 
@@ -28,7 +32,7 @@ def safe_border(width=1, color="#2A2A32"):
   return ft.Border(top=side, right=side, bottom=side, left=side)
 
 
-class NumberedCanvas(canvas.Canvas):
+class NumberedCanvas(canvas.Canvas if REPORTLAB_AVAILABLE else object):
   """Canvas personnalisé pour calculer le nombre total de pages et ajouter un pied de page propre."""
 
   def __init__(self, *args, **kwargs):
@@ -67,7 +71,10 @@ class NumberedCanvas(canvas.Canvas):
           else f"{entreprise_nom} — {mentions_custom}"
       )
     else:
-      mentions = f"{entreprise_nom} {f'- SIRET: {siret}' if siret else ''} — Document généré automatiquement."
+      mentions = (
+          f"{entreprise_nom} {f'- SIRET : {siret}' if siret else ''} — Document"
+          " généré automatiquement."
+      )
 
     self.drawString(35, 30, mentions)
 
@@ -77,27 +84,26 @@ class NumberedCanvas(canvas.Canvas):
 
 
 class FacturationView(ft.Container):
-  """Vue Flet pour la gestion des devis et factures (100% Mobile & Desktop)."""
+  """Vue Flet pour la gestion des devis et factures (100 % Mobile & Desktop)."""
 
   def __init__(self, app):
     super().__init__()
-    
+
+    self.app = app
+    self.expand = True
+    self.padding = 10
+    self.accent_color = "#2B719E"
+
     self.csv_picker = ft.FilePicker(on_result=self._on_csv_export_result)
+    self.documents = {}
+    self.selected_doc_key = None
+    self.display_container = ft.Container(expand=True)
 
     try:
-      self.app = app
-      self.expand = True
-      self.padding = 10
-      self.accent_color = "#2B719E"
-
       if hasattr(self.app, "entreprise") and isinstance(
           self.app.entreprise, dict
       ):
         self.accent_color = self.app.entreprise.get("accent_color", "#2B719E")
-
-      self.documents = {}
-      self.selected_doc_key = None
-      self.display_container = ft.Container(expand=True)
 
       self._build_interface()
     except Exception as ex:
@@ -106,12 +112,9 @@ class FacturationView(ft.Container):
   def did_mount(self):
     try:
       if self.page:
-        if not hasattr(self, "csv_picker") or self.csv_picker is None:
-          self.csv_picker = ft.FilePicker(on_result=self._on_csv_export_result)
-        
         if self.csv_picker not in self.page.overlay:
           self.page.overlay.append(self.csv_picker)
-          
+
         self.page.on_resized = self._on_screen_resize
         self._refresh_table()
     except Exception as ex:
@@ -129,12 +132,12 @@ class FacturationView(ft.Container):
         padding=15,
         bgcolor="#3f1212",
         border_radius=10,
-        border=safe_border(1, "red700"),
+        border=safe_border(1, ft.colors.RED_700),
         content=ft.Column(
             [
                 ft.Text(
                     "⚠️ Erreur dans la Facturation",
-                    color="red300",
+                    color=ft.colors.RED_300,
                     weight=ft.FontWeight.BOLD,
                 ),
                 ft.Text(error_msg, color="white", size=11, selectable=True),
@@ -154,7 +157,7 @@ class FacturationView(ft.Container):
     header = ft.Row(
         controls=[
             ft.IconButton(
-                "arrow_back_rounded",
+                icon=ft.icons.ARROW_BACK_ROUNDED,
                 on_click=lambda e: self.app.navigate_to("Dashboard"),
             ),
             ft.Text("📂 Factures & Devis", size=20, weight=ft.FontWeight.BOLD),
@@ -215,12 +218,12 @@ class FacturationView(ft.Container):
         show_checkbox_column=False,
     )
 
-    def btn_grid(text, icon, color, action):
+    def btn_grid(text, icon_name, color, action):
       return ft.Column(
           [
               ft.ElevatedButton(
                   content=ft.Row(
-                      [ft.Icon(icon, size=16), ft.Text(text, size=12)],
+                      [ft.Icon(icon_name, size=16), ft.Text(text, size=12)],
                       spacing=6,
                       alignment=ft.MainAxisAlignment.CENTER,
                   ),
@@ -237,27 +240,39 @@ class FacturationView(ft.Container):
         controls=[
             btn_grid(
                 "Voir PDF",
-                "picture_as_pdf",
+                ft.icons.PICTURE_AS_PDF,
                 "#2B719E",
                 self.ouvrir_pdf_selectionne,
             ),
             btn_grid(
-                "Générer PDF", "save_alt", "#8B5CF6", self.exporter_pdf_organise
+                "Générer PDF",
+                ft.icons.SAVE_ALT,
+                "#8B5CF6",
+                self.exporter_pdf_organise,
             ),
-            btn_grid("Modifier", "edit", "#F59E0B", self.modifier_selectionne),
-            btn_grid("Marquer Payée", "euro", "#10B981", self.marquer_payee),
             btn_grid(
-                "URSSAF", "check_circle", "#16A34A", self.declarer_urssaf
+                "Modifier", ft.icons.EDIT, "#F59E0B", self.modifier_selectionne
+            ),
+            btn_grid(
+                "Marquer Payée", ft.icons.EURO, "#10B981", self.marquer_payee
+            ),
+            btn_grid(
+                "URSSAF", ft.icons.CHECK_CIRCLE, "#16A34A", self.declarer_urssaf
             ),
             btn_grid(
                 "Convertir Devis",
-                "transform",
+                ft.icons.TRANSFORM,
                 "#0EA5E9",
                 self.convertir_devis_en_facture,
             ),
-            btn_grid("Export CSV", "table_chart", "#4F46E5", self.exporter_csv),
             btn_grid(
-                "Supprimer", "delete", "#DC2626", self.supprimer_selectionne
+                "Export CSV", ft.icons.TABLE_CHART, "#4F46E5", self.exporter_csv
+            ),
+            btn_grid(
+                "Supprimer",
+                ft.icons.DELETE,
+                "#DC2626",
+                self.supprimer_selectionne,
             ),
         ],
         spacing=8,
@@ -282,9 +297,7 @@ class FacturationView(ft.Container):
       self.table.rows.clear()
       query = (
           self.search_entry.value.strip().lower()
-          if self.search_entry
-          and hasattr(self.search_entry, "value")
-          and self.search_entry.value
+          if self.search_entry and self.search_entry.value
           else ""
       )
 
@@ -317,7 +330,9 @@ class FacturationView(ft.Container):
 
     self.display_container.content = ft.Container(
         content=ft.Column(
-            controls=[ft.Row(controls=[self.table], scroll=ft.ScrollMode.AUTO)],
+            controls=[
+                ft.Row(controls=[self.table], scroll=ft.ScrollMode.AUTO)
+            ],
             scroll=ft.ScrollMode.AUTO,
             expand=True,
         ),
@@ -326,7 +341,6 @@ class FacturationView(ft.Container):
         border=safe_border(1, "#2A2A2E"),
         padding=10,
         height=300,
-        expand=True,
     )
 
   def _render_mobile_cards(self, docs):
@@ -513,7 +527,9 @@ class FacturationView(ft.Container):
 
   def _selected_document(self):
     if not self.selected_doc_key:
-      self.show_snack("Veuillez d'abord sélectionner un document.", is_error=True)
+      self.show_snack(
+          "Veuillez d'abord sélectionner un document.", is_error=True
+      )
       return None, None
     type_doc, num_doc = self.selected_doc_key
     return type_doc, self.documents.get((type_doc, num_doc))
@@ -531,28 +547,34 @@ class FacturationView(ft.Container):
   def _trouver_chemin_valide(self, chemin_initial):
     if not chemin_initial:
       return ""
-    if os.path.exists(chemin_initial):
-      return os.path.abspath(chemin_initial)
 
-    dossiers_recherche = [
-        os.getcwd(),
-        os.path.dirname(os.path.abspath(__file__)),
-        os.path.join(os.getcwd(), "data"),
-        os.path.join(os.getcwd(), "assets"),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets"),
-    ]
+    p_init = Path(chemin_initial)
+    if p_init.exists():
+      return str(p_init.resolve())
 
-    for d in dossiers_recherche:
-      t1 = os.path.join(d, os.path.basename(chemin_initial))
-      if os.path.exists(t1):
-        return t1
-      t2 = os.path.join(d, chemin_initial)
-      if os.path.exists(t2):
-        return t2
+    base_dirs = []
+    if hasattr(self.app, "data_dir") and self.app.data_dir:
+      base_dirs.append(Path(self.app.data_dir))
+
+    base_dirs.extend(
+        [Path.cwd(), Path(__file__).parent, Path(__file__).parent / "assets"]
+    )
+
+    for d in base_dirs:
+      t1 = d / p_init.name
+      if t1.exists():
+        return str(t1.resolve())
+      t2 = d / chemin_initial
+      if t2.exists():
+        return str(t2.resolve())
     return ""
 
   def exporter_pdf_direct(self, type_doc, doc, ouvrir_apres=False):
+    if not REPORTLAB_AVAILABLE:
+      return self.show_snack(
+          "ReportLab n'est pas disponible pour générer des PDF.", is_error=True
+      )
+
     date_str = doc.get("date_creation", datetime.now().strftime("%d/%m/%Y"))
     try:
       parts = date_str.split("/")
@@ -561,37 +583,35 @@ class FacturationView(ft.Container):
       now = datetime.now()
       j, m, a = f"{now.day:02d}", f"{now.month:02d}", f"{now.year}"
 
-    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # Répertoire sécurisé Android / Desktop
     if hasattr(self.app, "data_dir") and self.app.data_dir:
-      base_dir = os.path.join(self.app.data_dir, "Documents_PDF")
+      base_dir = Path(self.app.data_dir) / "Documents_PDF"
     else:
-      parent_dir = os.path.dirname(current_dir)
-      base_dir = (
-          os.path.join(parent_dir, "data", "Documents_PDF")
-          if os.path.exists(os.path.join(parent_dir, "data"))
-          else os.path.join(current_dir, "data", "Documents_PDF")
-      )
+      base_dir = Path(__file__).parent / "data" / "Documents_PDF"
 
-    folder_path = os.path.join(base_dir, type_doc.capitalize(), a, m)
+    folder_path = base_dir / type_doc.capitalize() / a / m
 
     try:
-      os.makedirs(folder_path, exist_ok=True)
+      folder_path.mkdir(parents=True, exist_ok=True)
       file_name = f"{doc.get('numero', 'SANS_NUMERO')}.pdf"
-      full_path = os.path.join(folder_path, file_name)
+      full_path = folder_path / file_name
 
-      self._generate_pdf_file(type_doc, doc, full_path)
+      self._generate_pdf_file(type_doc, doc, str(full_path))
 
-      doc["pdf_path"] = full_path
-      doc["pdf_to_load"] = full_path
+      doc["pdf_path"] = str(full_path)
+      doc["pdf_to_load"] = str(full_path)
       doc["type_doc_interne"] = type_doc
 
       if ouvrir_apres:
-        self.app.current_doc = doc
-        self.app.navigate_to("PDFViewer")
+        if hasattr(self.app, "navigate_to"):
+          self.app.current_doc = doc
+          self.app.navigate_to("PDFViewer")
+        else:
+          self.show_snack(f"PDF généré : {file_name}")
       else:
-        self.show_snack(f"⚡ PDF généré sous : {full_path}")
+        self.show_snack(f"⚡ PDF enregistré dans le dossier de l'app")
     except Exception as ex:
-      self.show_snack(f"Erreur PDF : {ex}", is_error=True)
+      self.show_snack(f"Erreur création PDF : {ex}", is_error=True)
 
   def _generate_pdf_file(self, type_doc, doc, file_path):
     doc_pdf = SimpleDocTemplate(
@@ -680,11 +700,11 @@ class FacturationView(ft.Container):
 
     txt_entreprise = f"<b>{ent_nom}</b><br/>{ent_bloc_adresse}<br/>"
     if ent_tel:
-      txt_entreprise += f"Tel: {ent_tel}<br/>"
+      txt_entreprise += f"Tel : {ent_tel}<br/>"
     if ent_email:
-      txt_entreprise += f"Email: {ent_email}<br/>"
+      txt_entreprise += f"Email : {ent_email}<br/>"
     if ent_siret:
-      txt_entreprise += f"SIRET: {ent_siret}"
+      txt_entreprise += f"SIRET : {ent_siret}"
 
     entreprise_elements = []
     logo_path = self._trouver_chemin_valide(
@@ -694,7 +714,7 @@ class FacturationView(ft.Container):
       try:
         entreprise_elements.append(Image(logo_path, width=110, height=45))
         entreprise_elements.append(Spacer(1, 8))
-      except:
+      except Exception:
         pass
     entreprise_elements.append(Paragraph(txt_entreprise, style_ent_body))
 
@@ -745,7 +765,7 @@ class FacturationView(ft.Container):
     identite_client = f"{prenom_c} {nom_c}".strip() if prenom_c else nom_c
     txt_client = f"<b>DESTINATAIRE</b><br/><b>{identite_client}</b><br/>{cli_bloc_adresse}"
     if tel_c:
-      txt_client += f"<br/>Tel: {tel_c}"
+      txt_client += f"<br/>Tel : {tel_c}"
 
     client_table = Table(
         [["", Paragraph(txt_client, style_client_body)]], colWidths=[260, 265]
@@ -893,7 +913,7 @@ class FacturationView(ft.Container):
     if sig_img_path:
       try:
         signature_elements.append(Image(sig_img_path, width=150, height=50))
-      except:
+      except Exception:
         signature_elements.append(Spacer(1, 50))
     else:
       signature_elements.append(Spacer(1, 50))
@@ -964,20 +984,26 @@ class FacturationView(ft.Container):
         )
         meta = sign_pdf.PdfSignatureMetadata(field_name="SignatureInvisible")
         sign_pdf.sign_pdf(w, meta, signer=signer, output=f)
-    except:
+    except Exception:
       pass
 
   def modifier_selectionne(self, e=None):
     type_doc, doc = self._selected_document()
     if not doc:
       return
-    from views.create_document import CreateDocumentView
 
-    if hasattr(self.app, "content_area"):
-      self.app.content_area.content = CreateDocumentView(
-          app=self.app, doc_type=type_doc, doc_to_edit=doc
+    try:
+      from views.create_document import CreateDocumentView
+
+      if hasattr(self.app, "content_area"):
+        self.app.content_area.content = CreateDocumentView(
+            app=self.app, doc_type=type_doc, doc_to_edit=doc
+        )
+      self.safe_update()
+    except Exception as ex:
+      self.show_snack(
+          f"Impossible de charger le formulaire d'édition : {ex}", is_error=True
       )
-    self.safe_update()
 
   def supprimer_selectionne(self, e=None):
     type_doc, doc = self._selected_document()
@@ -996,20 +1022,22 @@ class FacturationView(ft.Container):
             self.app.factures.remove(doc)
         if hasattr(self.app, "save_data"):
           self.app.save_data()
+        self.selected_doc_key = None
         self._refresh_table()
         self.show_snack("Le document a été supprimé.")
 
     dialog = ft.AlertDialog(
         title=ft.Text("🚨 Suppression"),
-        content=ft.Text(f"Supprimer le {type_doc} n°{doc['numero']} ?"),
+        content=ft.Text(f"Supprimer le {type_doc} n°{doc.get('numero', '')} ?"),
         actions=[
             ft.TextButton(
                 "Annuler", on_click=lambda _: confirmation_action(False)
             ),
-            ft.TextButton(
+            ft.ElevatedButton(
                 "Supprimer",
+                bgcolor=ft.colors.RED_700,
+                color="white",
                 on_click=lambda _: confirmation_action(True),
-                style=ft.ButtonStyle(color="red"),
             ),
         ],
     )
@@ -1078,12 +1106,6 @@ class FacturationView(ft.Container):
 
   def exporter_csv(self, e=None):
     try:
-      if not hasattr(self, "csv_picker") or self.csv_picker is None:
-        self.csv_picker = ft.FilePicker(on_result=self._on_csv_export_result)
-        if self.page and self.csv_picker not in self.page.overlay:
-          self.page.overlay.append(self.csv_picker)
-          self.page.update()
-
       self.csv_picker.save_file(
           file_name="historique_comptable.csv", allowed_extensions=["csv"]
       )
@@ -1121,7 +1143,8 @@ class FacturationView(ft.Container):
   def show_snack(self, message, is_error=False):
     if self.page:
       self.page.snack_bar = ft.SnackBar(
-          content=ft.Text(message), bgcolor="red" if is_error else "green"
+          content=ft.Text(message),
+          bgcolor=ft.colors.RED_700 if is_error else ft.colors.GREEN_700,
       )
       self.page.snack_bar.open = True
       self.safe_update()
