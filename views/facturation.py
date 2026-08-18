@@ -111,7 +111,6 @@ class FacturationView(ft.Container):
     def did_mount(self):
         try:
             if self.page:
-                # Tente l'initialisation du FilePicker de façon totalement isolée
                 try:
                     if not self.csv_picker:
                         self.csv_picker = ft.FilePicker()
@@ -119,7 +118,7 @@ class FacturationView(ft.Container):
                     if self.csv_picker not in self.page.overlay:
                         self.page.overlay.append(self.csv_picker)
                 except Exception as picker_err:
-                    print(f"FilePicker non supporté sur cette plateforme : {picker_err}")
+                    print(f"FilePicker non supporté : {picker_err}")
                     self.csv_picker = None
 
                 self.page.on_resized = self._on_screen_resize
@@ -250,7 +249,7 @@ class FacturationView(ft.Container):
                         height=42,
                         style=ft.ButtonStyle(
                             shape=ft.RoundedRectangleBorder(radius=8),
-                            padding=ft.padding.only(left=10, right=10, top=5, bottom=5),
+                            padding=8,  # Remplace ft.padding.only(...)
                         ),
                         on_click=action,
                     )
@@ -411,7 +410,7 @@ class FacturationView(ft.Container):
                                         if type_doc == "facture"
                                         else "#8B5CF6"
                                     ),
-                                    padding=ft.padding.only(left=8, right=8, top=2, bottom=2),
+                                    padding=4,  # Remplace ft.padding.only(...)
                                     border_radius=4,
                                 ),
                                 ft.Text(
