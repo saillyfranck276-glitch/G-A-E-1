@@ -5,10 +5,10 @@ from pathlib import Path
 import re
 import flet as ft
 
-# --- IMPORTS OPTIONNELS REPORTLAB & PYHANKO ---
+# --- IMPORTS OPTIONNELS REPORTLAB ---
 REPORTLAB_AVAILABLE = False
 try:
-    from reportlab.lib import colors as rl_colors  # Alias pour éviter tout conflit
+    from reportlab.lib import colors as rl_colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.pdfgen import canvas
@@ -33,7 +33,7 @@ def safe_border(width=1, color="#2A2A32"):
 
 
 class NumberedCanvas(canvas.Canvas if REPORTLAB_AVAILABLE else object):
-    """Canvas personnalisé pour calculer le nombre total de pages et ajouter un pied de page propre."""
+    """Canvas personnalisé pour le calcul des pages et le pied de page."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -77,14 +77,13 @@ class NumberedCanvas(canvas.Canvas if REPORTLAB_AVAILABLE else object):
             )
 
         self.drawString(35, 30, mentions)
-
         page_text = f"Page {self._pageNumber} sur {page_count}"
         self.drawRightString(A4[0] - 35, 30, page_text)
         self.restoreState()
 
 
 class FacturationView(ft.Container):
-    """Vue Flet pour la gestion des devis et factures (100 % Mobile & Desktop)."""
+    """Vue Flet pour la gestion des devis et factures."""
 
     def __init__(self, app):
         super().__init__()
@@ -94,8 +93,14 @@ class FacturationView(ft.Container):
         self.padding = 10
         self.accent_color = "#2B719E"
 
-        self.csv_picker = ft.FilePicker()
-        self.csv_picker.on_result = self._on_csv_export_result
+        # Instanciation sécurisée du FilePicker (évite le crash si non supporté sur la plateforme)
+        self.csv_picker = None
+        try:
+            self.csv_picker = ft.FilePicker()
+            self.csv_picker.on_result = self._on_csv_export_result
+        except Exception:
+            self.csv_picker = None
+
         self.documents = {}
         self.selected_doc_key = None
         self.display_container = ft.Container(expand=True)
@@ -113,7 +118,7 @@ class FacturationView(ft.Container):
     def did_mount(self):
         try:
             if self.page:
-                if self.csv_picker not in self.page.overlay:
+                if self.csv_picker and self.csv_picker not in self.page.overlay:
                     self.page.overlay.append(self.csv_picker)
 
                 self.page.on_resized = self._on_screen_resize
@@ -155,10 +160,12 @@ class FacturationView(ft.Container):
         return self.page.width < 768 if self.page else False
 
     def _build_interface(self):
+        icon_back = getattr(ft.icons, "ARROW_BACK_ROUNDED", "arrow_back")
+
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    icon="arrow_back_rounded",
+                    icon=icon_back,
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
                 ft.Text("📂 Factures & Devis", size=20, weight=ft.FontWeight.BOLD),
@@ -219,12 +226,13 @@ class FacturationView(ft.Container):
             show_checkbox_column=False,
         )
 
-        def btn_grid(text, icon_name, color, action):
+        def btn_grid(text, icon_key, color, action):
+            icon_obj = getattr(ft.icons, icon_key.upper(), icon_key)
             return ft.Column(
                 [
                     ft.ElevatedButton(
                         content=ft.Row(
-                            [ft.Icon(icon_name, size=16), ft.Text(text, size=12)],
+                            [ft.Icon(icon_obj, size=16), ft.Text(text, size=12)],
                             spacing=6,
                             alignment=ft.MainAxisAlignment.CENTER,
                         ),
@@ -241,37 +249,37 @@ class FacturationView(ft.Container):
             controls=[
                 btn_grid(
                     "Voir PDF",
-                    "picture_as_pdf",
+                    "PICTURE_AS_PDF",
                     "#2B719E",
                     self.ouvrir_pdf_selectionne,
                 ),
                 btn_grid(
                     "Générer PDF",
-                    "save_alt",
+                    "SAVE_ALT",
                     "#8B5CF6",
                     self.exporter_pdf_organise,
                 ),
                 btn_grid(
-                    "Modifier", "edit", "#F59E0B", self.modifier_selectionne
+                    "Modifier", "EDIT", "#F59E0B", self.modifier_selectionne
                 ),
                 btn_grid(
-                    "Marquer Payée", "euro", "#10B981", self.marquer_payee
+                    "Marquer Payée", "EURO", "#10B981", self.marquer_payee
                 ),
                 btn_grid(
-                    "URSSAF", "check_circle", "#16A34A", self.declarer_urssaf
+                    "URSSAF", "CHECK_CIRCLE", "#16A34A", self.declarer_urssaf
                 ),
                 btn_grid(
                     "Convertir Devis",
-                    "transform",
+                    "TRANSFORM",
                     "#0EA5E9",
                     self.convertir_devis_en_facture,
                 ),
                 btn_grid(
-                    "Export CSV", "table_chart", "#4F46E5", self.exporter_csv
+                    "Export CSV", "TABLE_CHART", "#4F46E5", self.exporter_csv
                 ),
                 btn_grid(
                     "Supprimer",
-                    "delete",
+                    "DELETE",
                     "#DC2626",
                     self.supprimer_selectionne,
                 ),
@@ -1105,6 +1113,8 @@ class FacturationView(ft.Container):
         self.show_snack("Facture créée ! 🔄")
 
     def exporter_csv(self, e=None):
+        if not self.csv_picker:
+            return self.show_snack("Export CSV non disponible sur cette plateforme.", is_error=True)
         try:
             self.csv_picker.save_file(
                 file_name="historique_comptable.csv", allowed_extensions=["csv"]
