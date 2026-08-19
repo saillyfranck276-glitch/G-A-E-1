@@ -143,8 +143,7 @@ class FacturationView(ft.Container):
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    icon="arrow_back",
-                    icon_color="white",
+                    content=ft.Icon("arrow_back", color="white"),
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
                 ft.Text("📂 Factures & Devis", size=20, weight=ft.FontWeight.BOLD),
