@@ -44,7 +44,8 @@ class ArticlesView(ft.Container):
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    content=ft.Icon("arrow_back", color="white"),
+                    icon="arrow_back",
+                    icon_color="white",
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
                 ft.Text("📦 Gestion des Articles", size=20, weight=ft.FontWeight.BOLD),
@@ -161,6 +162,9 @@ class ArticlesView(ft.Container):
                 ft.DataCell(ft.Text(prix), on_tap=select_handler()),
                 ft.DataCell(ft.Text(tva), on_tap=select_handler()),
             ]
+            if self.selected_article_index == idx:
+                row.selected = True
+
             self.table.rows.append(row)
 
         self.display_container.content = ft.Container(
@@ -209,11 +213,132 @@ class ArticlesView(ft.Container):
         self.selected_article_index = idx
         self._refresh_table()
 
+    def _close_dialog(self, dialog):
+        dialog.open = False
+        if self.page:
+            self.page.update()
+
+    def _show_snack(self, message, is_error=False):
+        if self.page:
+            self.page.snack_bar = ft.SnackBar(
+                content=ft.Text(message),
+                bgcolor="#B91C1C" if is_error else "#15803D",
+            )
+            self.page.snack_bar.open = True
+            self.page.update()
+
     def ajouter_article(self, e=None):
-        pass
+        if not self.page:
+            return
+
+        nom_field = ft.TextField(label="Désignation", autofocus=True)
+        prix_field = ft.TextField(label="Prix HT (€)", value="0.00")
+        tva_field = ft.TextField(label="TVA (%)", value="20.0")
+
+        def valider(_):
+            if not nom_field.value.strip():
+                return
+            try:
+                prix = float(prix_field.value.replace(",", "."))
+                tva = float(tva_field.value.replace(",", "."))
+            except ValueError:
+                self._show_snack("Saisie numérique invalide pour le prix ou la TVA.", is_error=True)
+                return
+
+            nouvel_art = {"nom": nom_field.value.strip(), "prix": prix, "tva": tva}
+            if not hasattr(self.app, "articles") or not isinstance(self.app.articles, list):
+                self.app.articles = []
+            self.app.articles.append(nouvel_art)
+
+            if hasattr(self.app, "save_data"):
+                self.app.save_data()
+
+            self._close_dialog(dialog)
+            self._refresh_table()
+            self._show_snack("Article ajouté avec succès.")
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("➕ Nouvel Article"),
+            content=ft.Column([nom_field, prix_field, tva_field], tight=True, spacing=10),
+            actions=[
+                ft.TextButton("Annuler", on_click=lambda _: self._close_dialog(dialog)),
+                ft.ElevatedButton("Enregistrer", bgcolor="#2B719E", color="white", on_click=valider),
+            ],
+        )
+        self.page.dialog = dialog
+        dialog.open = True
+        self.page.update()
 
     def modifier_article(self, e=None):
-        pass
+        if self.selected_article_index is None or not hasattr(self.app, "articles"):
+            return self._show_snack("Veuillez sélectionner un article à modifier.", is_error=True)
+        if self.selected_article_index >= len(self.app.articles):
+            return
+
+        art = self.app.articles[self.selected_article_index]
+        nom_field = ft.TextField(label="Désignation", value=str(art.get("nom", art.get("designation", ""))))
+        prix_field = ft.TextField(label="Prix HT (€)", value=str(art.get("prix", art.get("prix_unitaire", 0))))
+        tva_field = ft.TextField(label="TVA (%)", value=str(art.get("tva", 20)))
+
+        def valider(_):
+            if not nom_field.value.strip():
+                return
+            try:
+                prix = float(prix_field.value.replace(",", "."))
+                tva = float(tva_field.value.replace(",", "."))
+            except ValueError:
+                self._show_snack("Saisie numérique invalide.", is_error=True)
+                return
+
+            art["nom"] = nom_field.value.strip()
+            art["prix"] = prix
+            art["tva"] = tva
+
+            if hasattr(self.app, "save_data"):
+                self.app.save_data()
+
+            self._close_dialog(dialog)
+            self._refresh_table()
+            self._show_snack("Article modifié.")
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("✏️ Modifier l'article"),
+            content=ft.Column([nom_field, prix_field, tva_field], tight=True, spacing=10),
+            actions=[
+                ft.TextButton("Annuler", on_click=lambda _: self._close_dialog(dialog)),
+                ft.ElevatedButton("Enregistrer", bgcolor="#F59E0B", color="white", on_click=valider),
+            ],
+        )
+        self.page.dialog = dialog
+        dialog.open = True
+        self.page.update()
 
     def supprimer_article(self, e=None):
-        pass
+        if self.selected_article_index is None or not hasattr(self.app, "articles"):
+            return self._show_snack("Veuillez sélectionner un article à supprimer.", is_error=True)
+        if self.selected_article_index >= len(self.app.articles):
+            return
+
+        art = self.app.articles[self.selected_article_index]
+        nom = art.get("nom", art.get("designation", "cet article"))
+
+        def valider(_):
+            self.app.articles.pop(self.selected_article_index)
+            self.selected_article_index = None
+            if hasattr(self.app, "save_data"):
+                self.app.save_data()
+            self._close_dialog(dialog)
+            self._refresh_table()
+            self._show_snack("Article supprimé.")
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("🗑️ Suppression"),
+            content=ft.Text(f"Supprimer l'article « {nom} » ?"),
+            actions=[
+                ft.TextButton("Annuler", on_click=lambda _: self._close_dialog(dialog)),
+                ft.ElevatedButton("Supprimer", bgcolor="#DC2626", color="white", on_click=valider),
+            ],
+        )
+        self.page.dialog = dialog
+        dialog.open = True
+        self.page.update()
