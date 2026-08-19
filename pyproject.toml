@@ -31,7 +31,7 @@ dependencies = [
     "google-api-python-client",
     "google-auth-httplib2",
     "google-auth-oauthlib",
-    "pymupdf",
+    "pypdf",
 ]
 
 [project.optional-dependencies]
