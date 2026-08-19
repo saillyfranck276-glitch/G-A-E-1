@@ -2,6 +2,7 @@ import flet as ft
 
 
 def safe_border(width=1, color="#424242"):
+    """Bordure universelle sécurisée."""
     side = ft.BorderSide(width, color)
     return ft.Border(top=side, right=side, bottom=side, left=side)
 
@@ -18,7 +19,6 @@ class ArticlesView(ft.Container):
 
         self.display_container = ft.Container(expand=True)
         self._build_interface()
-        # Ne surtout pas appeler self._refresh_table() ou self.safe_update() ici !
 
     def did_mount(self):
         """Déclenché quand le contrôle est rattaché à la page."""
@@ -44,7 +44,7 @@ class ArticlesView(ft.Container):
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    icon=ft.icons.ARROW_BACK,
+                    icon="arrow_back",
                     icon_color="white",
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
