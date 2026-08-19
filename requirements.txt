@@ -1,0 +1,6 @@
+flet==0.24.1
+reportlab
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+pymupdf
