@@ -27,7 +27,6 @@ classifiers = [
 dependencies = [
     "flet==0.21.2",
     "reportlab==4.1.0",
-    "pypdf==4.0.1",
 ]
 
 [project.optional-dependencies]
