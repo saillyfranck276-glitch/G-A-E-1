@@ -26,8 +26,7 @@ except ImportError:
 
 def safe_border(width=1, color="#424242"):
     """Bordure universelle sécurisée."""
-    side = ft.BorderSide(width, color)
-    return ft.Border(top=side, right=side, bottom=side, left=side)
+    return ft.border.all(width, color)
 
 
 class NumberedCanvas(canvas.Canvas if REPORTLAB_AVAILABLE else object):
@@ -143,7 +142,8 @@ class FacturationView(ft.Container):
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    content=ft.Icon("arrow_back", color="white"),
+                    icon="arrow_back_rounded",
+                    icon_color="white",
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
                 ft.Text("📂 Factures & Devis", size=20, weight=ft.FontWeight.BOLD),
@@ -819,8 +819,12 @@ class FacturationView(ft.Container):
             return
 
         def confirmation_action(confirme):
-            dialog.open = False
-            page_obj.update()
+            if hasattr(page_obj, "close"):
+                page_obj.close(dialog)
+            else:
+                dialog.open = False
+                page_obj.update()
+
             if confirme:
                 if type_doc == "devis":
                     if hasattr(self.app, "devis") and doc in self.app.devis:
@@ -843,9 +847,12 @@ class FacturationView(ft.Container):
             ],
         )
 
-        page_obj.dialog = dialog
-        dialog.open = True
-        page_obj.update()
+        if hasattr(page_obj, "open"):
+            page_obj.open(dialog)
+        else:
+            page_obj.dialog = dialog
+            dialog.open = True
+            page_obj.update()
 
     def marquer_payee(self, e=None):
         type_doc, doc = self._selected_document()
@@ -937,9 +944,13 @@ class FacturationView(ft.Container):
     def show_snack(self, message, is_error=False):
         page_obj = self.page or getattr(self.app, "page", None)
         if page_obj:
-            page_obj.snack_bar = ft.SnackBar(
+            snack = ft.SnackBar(
                 content=ft.Text(message),
                 bgcolor="#B91C1C" if is_error else "#15803D",
             )
-            page_obj.snack_bar.open = True
-            page_obj.update()
+            if hasattr(page_obj, "open"):
+                page_obj.open(snack)
+            else:
+                page_obj.snack_bar = snack
+                snack.open = True
+                page_obj.update()
