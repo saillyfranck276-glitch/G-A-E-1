@@ -44,7 +44,8 @@ class ClientsView(ft.Container):
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    content=ft.Icon("arrow_back", color="white"),
+                    icon="arrow_back",
+                    icon_color="white",
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
                 ft.Text("👥 Répertoire Clients", size=20, weight=ft.FontWeight.BOLD),
@@ -165,6 +166,9 @@ class ClientsView(ft.Container):
                 ft.DataCell(ft.Text(tel), on_tap=select_handler()),
                 ft.DataCell(ft.Text(ville), on_tap=select_handler()),
             ]
+            if self.selected_client_index == idx:
+                row.selected = True
+
             self.table.rows.append(row)
 
         self.display_container.content = ft.Container(
@@ -216,11 +220,146 @@ class ClientsView(ft.Container):
         self.selected_client_index = idx
         self._refresh_table()
 
+    def _close_dialog(self, dialog):
+        dialog.open = False
+        if self.page:
+            self.page.update()
+
+    def _show_snack(self, message, is_error=False):
+        if self.page:
+            self.page.snack_bar = ft.SnackBar(
+                content=ft.Text(message),
+                bgcolor="#B91C1C" if is_error else "#15803D",
+            )
+            self.page.snack_bar.open = True
+            self.page.update()
+
     def ajouter_client(self, e=None):
-        pass
+        if not self.page:
+            return
+
+        nom_field = ft.TextField(label="Nom / Entreprise", autofocus=True)
+        email_field = ft.TextField(label="Email")
+        tel_field = ft.TextField(label="Téléphone")
+        adresse_field = ft.TextField(label="Adresse")
+        cp_field = ft.TextField(label="Code Postal")
+        ville_field = ft.TextField(label="Ville")
+
+        def valider(_):
+            if not nom_field.value.strip():
+                return
+
+            nouveau_cli = {
+                "nom": nom_field.value.strip(),
+                "email": email_field.value.strip(),
+                "telephone": tel_field.value.strip(),
+                "adresse": adresse_field.value.strip(),
+                "code_postal": cp_field.value.strip(),
+                "ville": ville_field.value.strip(),
+            }
+            if not hasattr(self.app, "clients") or not isinstance(self.app.clients, list):
+                self.app.clients = []
+            self.app.clients.append(nouveau_cli)
+
+            if hasattr(self.app, "save_data"):
+                self.app.save_data()
+
+            self._close_dialog(dialog)
+            self._refresh_table()
+            self._show_snack("Client ajouté avec succès.")
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("➕ Nouveau Client"),
+            content=ft.Column(
+                [nom_field, email_field, tel_field, adresse_field, cp_field, ville_field],
+                tight=True,
+                spacing=8,
+                scroll=ft.ScrollMode.AUTO,
+            ),
+            actions=[
+                ft.TextButton("Annuler", on_click=lambda _: self._close_dialog(dialog)),
+                ft.ElevatedButton("Enregistrer", bgcolor="#2B719E", color="white", on_click=valider),
+            ],
+        )
+        self.page.dialog = dialog
+        dialog.open = True
+        self.page.update()
 
     def modifier_client(self, e=None):
-        pass
+        if self.selected_client_index is None or not hasattr(self.app, "clients"):
+            return self._show_snack("Veuillez sélectionner un client à modifier.", is_error=True)
+        if self.selected_client_index >= len(self.app.clients):
+            return
+
+        cli = self.app.clients[self.selected_client_index]
+        nom_field = ft.TextField(label="Nom / Entreprise", value=str(cli.get("nom", "")))
+        email_field = ft.TextField(label="Email", value=str(cli.get("email", "")))
+        tel_field = ft.TextField(label="Téléphone", value=str(cli.get("telephone", cli.get("tel", ""))))
+        adresse_field = ft.TextField(label="Adresse", value=str(cli.get("adresse", "")))
+        cp_field = ft.TextField(label="Code Postal", value=str(cli.get("code_postal", cli.get("cp", ""))))
+        ville_field = ft.TextField(label="Ville", value=str(cli.get("ville", "")))
+
+        def valider(_):
+            if not nom_field.value.strip():
+                return
+
+            cli["nom"] = nom_field.value.strip()
+            cli["email"] = email_field.value.strip()
+            cli["telephone"] = tel_field.value.strip()
+            cli["adresse"] = adresse_field.value.strip()
+            cli["code_postal"] = cp_field.value.strip()
+            cli["ville"] = ville_field.value.strip()
+
+            if hasattr(self.app, "save_data"):
+                self.app.save_data()
+
+            self._close_dialog(dialog)
+            self._refresh_table()
+            self._show_snack("Client modifié.")
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("✏️ Modifier le client"),
+            content=ft.Column(
+                [nom_field, email_field, tel_field, adresse_field, cp_field, ville_field],
+                tight=True,
+                spacing=8,
+                scroll=ft.ScrollMode.AUTO,
+            ),
+            actions=[
+                ft.TextButton("Annuler", on_click=lambda _: self._close_dialog(dialog)),
+                ft.ElevatedButton("Enregistrer", bgcolor="#F59E0B", color="white", on_click=valider),
+            ],
+        )
+        self.page.dialog = dialog
+        dialog.open = True
+        self.page.update()
 
     def supprimer_client(self, e=None):
-        pass
+        if self.selected_client_index is None or not hasattr(self.app, "clients"):
+            return self._show_snack("Veuillez sélectionner un client à supprimer.", is_error=True)
+        if self.selected_client_index >= len(self.app.clients):
+            return
+
+        cli = self.app.clients[self.selected_client_index]
+        nom = cli.get("nom", "ce client") if isinstance(cli, dict) else str(cli)
+
+        def valider(_):
+            self.app.clients.pop(self.selected_client_index)
+            self.selected_client_index = None
+            if hasattr(self.app, "save_data"):
+                self.app.save_data()
+            self._close_dialog(dialog)
+            self._refresh_table()
+            self._show_snack("Client supprimé.")
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("🗑️ Suppression"),
+            content=ft.Text(f"Supprimer le client « {nom} » ?"),
+            actions=[
+                ft.TextButton("Annuler", on_click=lambda _: self._close_dialog(dialog)),
+                ft.ElevatedButton("Supprimer", bgcolor="#DC2626", color="white", on_click=valider),
+            ],
+        )
+        self.page.dialog = dialog
+        dialog.open = True
+        self.page.update()
