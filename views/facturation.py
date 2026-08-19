@@ -24,7 +24,7 @@ except ImportError:
     pass
 
 
-def safe_border(width=1, color=ft.colors.GREY_800):
+def safe_border(width=1, color="#424242"):
     """Bordure universelle sécurisée."""
     side = ft.BorderSide(width, color)
     return ft.Border(top=side, right=side, bottom=side, left=side)
@@ -128,15 +128,15 @@ class FacturationView(ft.Container):
             padding=15,
             bgcolor="#3f1212",
             border_radius=10,
-            border=safe_border(1, ft.colors.RED_700),
+            border=safe_border(1, "#B91C1C"),
             content=ft.Column(
                 [
                     ft.Text(
                         "⚠️ Erreur dans la Facturation",
-                        color=ft.colors.RED_300,
+                        color="#FCA5A5",
                         weight=ft.FontWeight.BOLD,
                     ),
-                    ft.Text(error_msg, color=ft.colors.WHITE, size=11, selectable=True),
+                    ft.Text(error_msg, color="white", size=11, selectable=True),
                 ],
                 spacing=5,
             ),
@@ -154,7 +154,7 @@ class FacturationView(ft.Container):
             controls=[
                 ft.IconButton(
                     icon=ft.icons.ARROW_BACK,
-                    icon_color=ft.colors.WHITE,
+                    icon_color="white",
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
                 ft.Text("📂 Factures & Devis", size=20, weight=ft.FontWeight.BOLD),
@@ -171,7 +171,7 @@ class FacturationView(ft.Container):
                         ft.ElevatedButton(
                             "➕ Nouveau Devis",
                             bgcolor=self.accent_color,
-                            color=ft.colors.WHITE,
+                            color="white",
                             height=40,
                             style=button_style,
                             on_click=lambda e: self.app.navigate_to("NouveauDevis"),
@@ -184,7 +184,7 @@ class FacturationView(ft.Container):
                         ft.ElevatedButton(
                             "➕ Nouvelle Facture",
                             bgcolor=self.accent_color,
-                            color=ft.colors.WHITE,
+                            color="white",
                             height=40,
                             style=button_style,
                             on_click=lambda e: self.app.navigate_to("NouvelleFacture"),
@@ -224,8 +224,8 @@ class FacturationView(ft.Container):
                     ft.ElevatedButton(
                         content=ft.Row(
                             [
-                                ft.Icon(icon_name, size=15, color=ft.colors.WHITE),
-                                ft.Text(text, size=11, color=ft.colors.WHITE),
+                                ft.Icon(icon_name, size=15, color="white"),
+                                ft.Text(text, size=11, color="white"),
                             ],
                             spacing=4,
                             alignment=ft.MainAxisAlignment.CENTER,
@@ -357,7 +357,7 @@ class FacturationView(ft.Container):
                                         type_doc.upper(),
                                         size=10,
                                         weight=ft.FontWeight.BOLD,
-                                        color=ft.colors.WHITE,
+                                        color="white",
                                     ),
                                     bgcolor=(
                                         self.accent_color if type_doc == "facture" else "#8B5CF6"
@@ -365,7 +365,7 @@ class FacturationView(ft.Container):
                                     padding=4,
                                     border_radius=4,
                                 ),
-                                ft.Text(num, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE, size=14),
+                                ft.Text(num, weight=ft.FontWeight.BOLD, color="white", size=14),
                                 ft.Text(
                                     total_ttc,
                                     weight=ft.FontWeight.BOLD,
@@ -451,7 +451,7 @@ class FacturationView(ft.Container):
                     content=ft.Container(
                         content=ft.Text(text, color=color, weight=weight),
                         alignment=ft.alignment.center_left,
-                        bgcolor=ft.colors.TRANSPARENT,
+                        bgcolor="transparent",
                         expand=True,
                     ),
                     on_tap=handle_single_tap,
@@ -850,7 +850,7 @@ class FacturationView(ft.Container):
             content=ft.Text(f"Supprimer le {type_doc} n°{doc.get('numero', '')} ?"),
             actions=[
                 ft.TextButton("Annuler", on_click=lambda _: confirmation_action(False)),
-                ft.ElevatedButton("Supprimer", bgcolor="#B91C1C", color=ft.colors.WHITE, on_click=lambda _: confirmation_action(True)),
+                ft.ElevatedButton("Supprimer", bgcolor="#B91C1C", color="white", on_click=lambda _: confirmation_action(True)),
             ],
         )
 
