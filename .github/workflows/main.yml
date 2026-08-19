@@ -71,10 +71,10 @@ jobs:
           # 2. Mise à jour des outils de packaging Python
           python -m pip install --upgrade pip setuptools wheel
 
-          # 3. Installation propre de Flet, ReportLab et Pillow (vrai moteur image)
+          # 3. Installation propre de Flet, ReportLab et Pillow
           pip install --upgrade flet reportlab pillow
 
-          # 4. Installation du projet si un fichier de dépendances existe
+          # 4. Installation des dépendances du projet
           if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
           if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then pip install -e . || pip install .; fi
 
@@ -84,7 +84,7 @@ jobs:
           FLUTTER_SUPPRESS_ANALYTICS: "true"
           PUB_DISABLE_ANALYTICS: "true"
         run: |
-          yes | flet build apk --verbose --clear-cache
+          yes | flet build apk --verbose
 
       - name: Sauvegarder l'APK en artifact GitHub
         continue-on-error: true
