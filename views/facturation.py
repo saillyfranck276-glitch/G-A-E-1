@@ -94,34 +94,24 @@ class FacturationView(ft.Container):
         self.selected_doc_key = None
         self.display_container = ft.Container(expand=True)
 
-        try:
-            if hasattr(self.app, "entreprise") and isinstance(
-                self.app.entreprise, dict
-            ):
-                self.accent_color = self.app.entreprise.get("accent_color", "#2B719E")
+        if hasattr(self.app, "entreprise") and isinstance(self.app.entreprise, dict):
+            self.accent_color = self.app.entreprise.get("accent_color", "#2B719E")
 
-            self._build_interface()
-            self._refresh_table()
-        except Exception as ex:
-            self._render_error_ui(f"Erreur d'initialisation : {ex}")
+        self._build_interface()
 
     def did_mount(self):
-        try:
-            if self.page:
-                self.page.on_resized = self._on_screen_resize
-                self._refresh_table()
-        except Exception as ex:
-            self._render_error_ui(str(ex))
+        """Déclenché lorsque le composant est attaché à la page."""
+        if self.page:
+            self.page.on_resized = self._on_screen_resize
+            self._refresh_table()
 
     def safe_update(self):
-        try:
-            page_obj = self.page or getattr(self.app, "page", None)
-            if page_obj:
-                page_obj.update()
-            else:
+        """Met à jour uniquement si le contrôle est dans le DOM."""
+        if self.page:
+            try:
                 self.update()
-        except Exception:
-            pass
+            except Exception:
+                pass
 
     def _render_error_ui(self, error_msg):
         self.content = ft.Container(
@@ -153,7 +143,7 @@ class FacturationView(ft.Container):
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    icon=ft.icons.ARROW_BACK,
+                    icon="arrow_back",
                     icon_color="white",
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
@@ -241,14 +231,14 @@ class FacturationView(ft.Container):
 
         actions_grid = ft.ResponsiveRow(
             controls=[
-                btn_grid("Voir PDF", ft.icons.PICTURE_AS_PDF, "#2B719E", self.ouvrir_pdf_selectionne),
-                btn_grid("Générer PDF", ft.icons.SAVE_ALT, "#8B5CF6", self.exporter_pdf_organise),
-                btn_grid("Modifier", ft.icons.EDIT, "#F59E0B", self.modifier_selectionne),
-                btn_grid("Marquer Payée", ft.icons.EURO, "#10B981", self.marquer_payee),
-                btn_grid("URSSAF", ft.icons.CHECK_CIRCLE, "#16A34A", self.declarer_urssaf),
-                btn_grid("Convertir Devis", ft.icons.TRANSFORM, "#0EA5E9", self.convertir_devis_en_facture),
-                btn_grid("Export CSV", ft.icons.TABLE_CHART, "#4F46E5", self.exporter_csv),
-                btn_grid("Supprimer", ft.icons.DELETE, "#DC2626", self.supprimer_selectionne),
+                btn_grid("Voir PDF", "picture_as_pdf", "#2B719E", self.ouvrir_pdf_selectionne),
+                btn_grid("Générer PDF", "save_alt", "#8B5CF6", self.exporter_pdf_organise),
+                btn_grid("Modifier", "edit", "#F59E0B", self.modifier_selectionne),
+                btn_grid("Marquer Payée", "euro", "#10B981", self.marquer_payee),
+                btn_grid("URSSAF", "check_circle", "#16A34A", self.declarer_urssaf),
+                btn_grid("Convertir Devis", "transform", "#0EA5E9", self.convertir_devis_en_facture),
+                btn_grid("Export CSV", "table_chart", "#4F46E5", self.exporter_csv),
+                btn_grid("Supprimer", "delete", "#DC2626", self.supprimer_selectionne),
             ],
             spacing=6,
         )
