@@ -47,11 +47,23 @@ jobs:
           flutter config --no-analytics
           yes | flutter doctor --android-licenses || true
 
-      - name: Nettoyage et installation des dépendances Python
+      - name: Convertir automatiquement Flet 0.21.2 et remplacer Pillow/ReportLab
+        run: |
+          # Passage à Flet 0.24.1
+          if [ -f "requirements.txt" ]; then sed -i 's/flet==0.21.2/flet==0.24.1/g' requirements.txt; fi
+          if [ -f "pyproject.toml" ]; then sed -i 's/flet==0.21.2/flet==0.24.1/g' pyproject.toml; fi
+          if [ -f "pyproject.toml" ]; then sed -i 's/flet>=0.21.2/flet==0.24.1/g' pyproject.toml; fi
+
+          # Remplacement automatique de reportlab/fpdf2 par fpdf 1.7.2 (sans Pillow)
+          if [ -f "requirements.txt" ]; then sed -i 's/reportlab/fpdf==1.7.2/g' requirements.txt; fi
+          if [ -f "requirements.txt" ]; then sed -i 's/fpdf2/fpdf==1.7.2/g' requirements.txt; fi
+          if [ -f "requirements.txt" ]; then sed -i '/pillow/d' requirements.txt; fi
+
+      - name: Installation des dépendances Python
         run: |
           rm -rf PIL
           python -m pip install --upgrade pip setuptools wheel
-          pip install --upgrade "flet==0.24.1" fpdf2 pypdf
+          pip install --upgrade "flet==0.24.1" "fpdf==1.7.2" pypdf
           if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
           if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then pip install -e . || pip install .; fi
 
