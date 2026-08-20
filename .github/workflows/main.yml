@@ -10,6 +10,10 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - name: Récupérer le code source
         uses: actions/checkout@v4
@@ -25,14 +29,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Configuration de Flutter SDK
+      - name: Configuration de Flutter 3.24.3
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.22.3"
+          flutter-version: "3.24.3"
           cache: true
 
-      - name: Acceptation des licences Android
+      - name: Installer Android SDK 34 et dépendances système
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev ninja-build
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"
           flutter config --no-analytics
           yes | flutter doctor --android-licenses || true
 
@@ -41,7 +49,7 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
 
-      - name: Purge du cache de build
+      - name: Nettoyer le cache Flet
         run: |
           flet clean || true
           rm -rf build /tmp/flet_*
