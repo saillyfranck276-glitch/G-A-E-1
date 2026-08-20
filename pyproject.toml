@@ -1,19 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "G-A-E"
-version = "1.0.0"
-requires-python = ">=3.11,<3.12"
-
-dependencies = [
-    "flet==0.24.1",
+version = "0.1.0"
+description = "Application de gestion pour micro-entreprise / auto-entrepreneur développée avec Flet."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Francky" }
 ]
 
-[tool.setuptools]
-py-modules = ["main"]
+dependencies = [
+    "flet==0.21.2",
+    "reportlab==4.1.0",
+    "google-api-python-client==2.118.0",
+    "google-auth-httplib2==0.2.0",
+    "google-auth-oauthlib==1.2.0",
+    "pypdf==4.0.1",
+]
 
-[tool.flet]
-main_script = "main.py"
-
-[tool.flet.android]
-compile_sdk_version = 34
-target_sdk_version = 34
-min_sdk_version = 21
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
