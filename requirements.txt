@@ -1,5 +1,5 @@
 flet==0.24.1
-fpdf==1.7.2
+fpdf2==2.7.9
 pypdf==4.0.1
 google-api-python-client==2.118.0
 google-auth-httplib2==0.2.0
