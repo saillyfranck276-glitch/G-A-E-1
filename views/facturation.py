@@ -1,84 +1,27 @@
 import csv
 from datetime import datetime
-from pathlib import Path
-import tempfile
+import re
 import flet as ft
-
-# --- IMPORTS OPTIONNELS REPORTLAB ---
-REPORTLAB_AVAILABLE = False
-try:
-    from reportlab.lib import colors as rl_colors
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.pdfgen import canvas
-    from reportlab.platypus import (
-        Image,
-        Paragraph,
-        SimpleDocTemplate,
-        Spacer,
-        Table,
-        TableStyle,
-    )
-
-    REPORTLAB_AVAILABLE = True
-except Exception:
-    REPORTLAB_AVAILABLE = False
-
-if REPORTLAB_AVAILABLE:
-    class NumberedCanvas(canvas.Canvas):
-        """Canvas personnalisé pour la numérotation et le pied de page PDF."""
-
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self._saved_page_states = []
-
-        def showPage(self):
-            self._saved_page_states.append(dict(self.__dict__))
-            self._startPage()
-
-        def save(self):
-            num_pages = len(self._saved_page_states)
-            for state in self._saved_page_states:
-                self.__dict__.update(state)
-                self.draw_page_decorations(num_pages)
-                super().showPage()
-            super().save()
-
-        def draw_page_decorations(self, page_count):
-            self.saveState()
-            self.setFont("Helvetica", 8)
-            self.setFillColor(rl_colors.HexColor("#6B7280"))
-            self.setStrokeColor(rl_colors.HexColor("#E5E7EB"))
-            self.setLineWidth(0.5)
-            self.line(35, 45, A4[0] - 35, 45)
-
-            entreprise_nom = getattr(self, "_entreprise_nom", "Votre Entreprise")
-            siret = getattr(self, "_entreprise_siret", "")
-            mentions_custom = getattr(self, "_entreprise_mentions", "")
-
-            if mentions_custom:
-                mentions = (
-                    f"{entreprise_nom} — {mentions_custom[:100]}..."
-                    if len(mentions_custom) > 100
-                    else f"{entreprise_nom} — {mentions_custom}"
-                )
-            else:
-                mentions = (
-                    f"{entreprise_nom} {f'- SIRET : {siret}' if siret else ''} — Document"
-                    " généré automatiquement."
-                )
-
-            self.drawString(35, 30, mentions)
-            page_text = f"Page {self._pageNumber} sur {page_count}"
-            self.drawRightString(A4[0] - 35, 30, page_text)
-            self.restoreState()
-else:
-    NumberedCanvas = None
 
 
 def safe_border(width=1, color="#424242"):
     """Bordure universelle sécurisée."""
-    return ft.border.all(width, color)
+    side = ft.BorderSide(width, color)
+    return ft.Border(top=side, right=side, bottom=side, left=side)
+
+
+def extract_client_name(client_data):
+    """Extrait proprement le nom du client s'il s'agit d'un dictionnaire ou d'une chaîne."""
+    if isinstance(client_data, dict):
+        return (
+            client_data.get("nom")
+            or client_data.get("contact_nom")
+            or client_data.get("entreprise")
+            or "Inconnu"
+        )
+    if isinstance(client_data, str) and client_data.strip():
+        return client_data.strip()
+    return "Inconnu"
 
 
 class FacturationView(ft.Container):
@@ -86,267 +29,299 @@ class FacturationView(ft.Container):
 
     def __init__(self, app):
         super().__init__()
-
         self.app = app
         self.expand = True
         self.padding = 10
-        self.accent_color = "#2B719E"
 
-        self.documents = {}
-        self.selected_doc_key = None
+        self.accent_color = (
+            getattr(self.app, "entreprise", {}).get("accent_color")
+            if hasattr(self.app, "entreprise")
+            else "#2B719E"
+        )
+        self.documents = {}  # Index { (type_doc, numero): doc_data }
+        self.selected_key = None  # (type_doc, numero)
+
+        self.file_picker = ft.FilePicker(on_result=self._on_csv_picked)
+
         self.display_container = ft.Container(expand=True)
-
-        if hasattr(self.app, "entreprise") and isinstance(self.app.entreprise, dict):
-            self.accent_color = self.app.entreprise.get("accent_color", "#2B719E")
-
+        self.main_layout = ft.Column(spacing=10, expand=True)
+        self.content = self.main_layout
         self._build_interface()
 
-    def did_mount(self):
-        """Déclenché lorsque le composant est attaché à la page."""
-        if self.page:
-            self.page.on_resized = self._on_screen_resize
-            self._refresh_table()
-
     def safe_update(self):
-        """Met à jour uniquement si le contrôle est dans le DOM."""
+        """Met à jour le composant uniquement s'il est rattaché à la page."""
         if self.page:
             try:
                 self.update()
             except Exception:
                 pass
 
-    def _render_error_ui(self, error_msg):
-        self.content = ft.Container(
-            padding=15,
-            bgcolor="#3f1212",
-            border_radius=10,
-            border=safe_border(1, "#B91C1C"),
-            content=ft.Column(
-                [
-                    ft.Text(
-                        "⚠️ Erreur dans la Facturation",
-                        color="#FCA5A5",
-                        weight=ft.FontWeight.BOLD,
-                    ),
-                    ft.Text(error_msg, color="white", size=11),
-                ],
-                spacing=5,
-            ),
-        )
-        self.safe_update()
+    def did_mount(self):
+        """Déclenché quand le contrôle est rattaché à la page."""
+        if self.page and self.file_picker not in self.page.overlay:
+            self.page.overlay.append(self.file_picker)
 
-    def _on_screen_resize(self, e):
+        if hasattr(self.app, "load_data"):
+            self.app.load_data()
         self._refresh_table()
 
     def _is_mobile(self):
-        return self.page.width < 768 if self.page else False
-
-    def _get_writable_dir(self, subfolder=""):
-        """Retourne un dossier d'écriture sécurisé compatible Android (Scoped Storage)."""
-        base_dir = None
-
-        if hasattr(self.app, "data_dir") and self.app.data_dir:
-            try:
-                p = Path(self.app.data_dir)
-                p.mkdir(parents=True, exist_ok=True)
-                base_dir = p
-            except Exception:
-                base_dir = None
-
-        if base_dir is None and self.page and hasattr(self.page, "get_upload_dir"):
-            try:
-                upload_dir = self.page.get_upload_dir()
-                if upload_dir:
-                    p = Path(upload_dir)
-                    p.mkdir(parents=True, exist_ok=True)
-                    base_dir = p
-            except Exception:
-                base_dir = None
-
-        if base_dir is None:
-            try:
-                p = Path(tempfile.gettempdir()) / "facturation_app"
-                p.mkdir(parents=True, exist_ok=True)
-                base_dir = p
-            except Exception:
-                base_dir = Path.home()
-
-        if subfolder:
-            target = base_dir / subfolder
-            try:
-                target.mkdir(parents=True, exist_ok=True)
-                return target
-            except Exception:
-                return base_dir
-
-        return base_dir
+        return self.page.width < 768 if (self.page and self.page.width) else False
 
     def _build_interface(self):
+        # 1. EN-TÊTE ET BARRE D'OUTILS PRINCIPALE
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    icon="arrow_back_rounded",
+                    icon="arrow_back",
                     icon_color="white",
+                    tooltip="Retour",
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
-                ft.Text("📂 Factures & Devis", size=20, weight=ft.FontWeight.BOLD),
-            ],
-            alignment=ft.MainAxisAlignment.START,
+                ft.Text("📂 Gestion des Documents", size=22, weight=ft.FontWeight.BOLD, color="white"),
+            ]
         )
 
         button_style = ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))
 
-        creation_block = ft.ResponsiveRow(
+        top_buttons = ft.Row(
+            controls=[
+                ft.ElevatedButton(
+                    "➕ Nouveau Devis",
+                    bgcolor=self.accent_color,
+                    color="white",
+                    height=38,
+                    style=button_style,
+                    on_click=lambda e: self._creer_document("devis"),
+                ),
+                ft.ElevatedButton(
+                    "➕ Nouvelle Facture",
+                    bgcolor=self.accent_color,
+                    color="white",
+                    height=38,
+                    style=button_style,
+                    on_click=lambda e: self._creer_document("facture"),
+                ),
+            ],
+            spacing=10,
+        )
+
+        # 2. BARRE DE RECHERCHE DYNAMIQUE
+        self.search_entry = ft.TextField(
+            hint_text="🔍 Rechercher par numéro, client, statut...",
+            bgcolor="#1A1A1C",
+            height=42,
+            text_size=13,
+            content_padding=10,
+            border_color="#2A2A32",
+            focused_border_color=self.accent_color,
+            text_style=ft.TextStyle(color="white"),
+            on_change=self._refresh_table,
+        )
+
+        # 3. TABLEAU D'AFFICHAGE (DESKTOP)
+        self.table = ft.DataTable(
+            columns=[
+                ft.DataColumn(ft.Text("Type", weight=ft.FontWeight.BOLD, color="white")),
+                ft.DataColumn(ft.Text("Numéro", weight=ft.FontWeight.BOLD, color="white")),
+                ft.DataColumn(ft.Text("Client", weight=ft.FontWeight.BOLD, color="white")),
+                ft.DataColumn(ft.Text("Total TTC", weight=ft.FontWeight.BOLD, color="white")),
+                ft.DataColumn(ft.Text("Statut", weight=ft.FontWeight.BOLD, color="white")),
+                ft.DataColumn(ft.Text("URSSAF", weight=ft.FontWeight.BOLD, color="white")),
+            ],
+            rows=[],
+            heading_row_color="#242426",
+            show_checkbox_column=False,
+            expand=True,
+        )
+
+        # 4. ZONE DES ACTIONS INTERACTIVES
+        actions = ft.ResponsiveRow(
             controls=[
                 ft.Column(
                     [
                         ft.ElevatedButton(
-                            "➕ Nouveau Devis",
-                            bgcolor=self.accent_color,
+                            "✏️ Modifier",
+                            bgcolor="#F59E0B",
                             color="white",
-                            height=40,
+                            height=38,
                             style=button_style,
-                            on_click=lambda e: self.app.navigate_to("NouveauDevis"),
+                            on_click=self.modifier_selectionne,
                         )
                     ],
-                    col={"xs": 6, "sm": 6},
+                    col={"xs": 6, "sm": 2},
                 ),
                 ft.Column(
                     [
                         ft.ElevatedButton(
-                            "➕ Nouvelle Facture",
-                            bgcolor=self.accent_color,
+                            "💶 Marquer Payée",
+                            bgcolor="#10B981",
                             color="white",
-                            height=40,
+                            height=38,
                             style=button_style,
-                            on_click=lambda e: self.app.navigate_to("NouvelleFacture"),
+                            on_click=self.marquer_payee,
                         )
                     ],
-                    col={"xs": 6, "sm": 6},
+                    col={"xs": 6, "sm": 2},
+                ),
+                ft.Column(
+                    [
+                        ft.ElevatedButton(
+                            "✅ Déclarer URSSAF",
+                            bgcolor="#16A34A",
+                            color="white",
+                            height=38,
+                            style=button_style,
+                            on_click=self.declarer_urssaf,
+                        )
+                    ],
+                    col={"xs": 6, "sm": 2},
+                ),
+                ft.Column(
+                    [
+                        ft.ElevatedButton(
+                            "🔄 Convertir",
+                            bgcolor="#0EA5E9",
+                            color="white",
+                            height=38,
+                            style=button_style,
+                            on_click=self.convertir_devis_en_facture,
+                        )
+                    ],
+                    col={"xs": 6, "sm": 2},
+                ),
+                ft.Column(
+                    [
+                        ft.ElevatedButton(
+                            "📊 Exporter CSV",
+                            bgcolor="#4F46E5",
+                            color="white",
+                            height=38,
+                            style=button_style,
+                            on_click=self.exporter_csv,
+                        )
+                    ],
+                    col={"xs": 6, "sm": 2},
+                ),
+                ft.Column(
+                    [
+                        ft.ElevatedButton(
+                            "🗑️ Supprimer",
+                            bgcolor="#DC2626",
+                            color="white",
+                            height=38,
+                            style=button_style,
+                            on_click=self.supprimer_selectionne,
+                        )
+                    ],
+                    col={"xs": 6, "sm": 2},
                 ),
             ],
             spacing=8,
         )
 
-        self.search_entry = ft.TextField(
-            label="🔍 Rechercher (Numéro, client, statut...)",
-            bgcolor="#1A1A1C",
-            height=40,
-            text_size=13,
-            on_change=self._refresh_table,
-        )
+        self.main_layout.controls = [
+            header,
+            top_buttons,
+            self.search_entry,
+            self.display_container,
+            actions,
+        ]
 
-        self.table = ft.DataTable(
-            columns=[
-                ft.DataColumn(ft.Text("Type", weight=ft.FontWeight.BOLD)),
-                ft.DataColumn(ft.Text("Numéro", weight=ft.FontWeight.BOLD)),
-                ft.DataColumn(ft.Text("Client", weight=ft.FontWeight.BOLD)),
-                ft.DataColumn(ft.Text("Total TTC", weight=ft.FontWeight.BOLD)),
-                ft.DataColumn(ft.Text("Statut", weight=ft.FontWeight.BOLD)),
-                ft.DataColumn(ft.Text("URSSAF", weight=ft.FontWeight.BOLD)),
-            ],
-            rows=[],
-            heading_row_color="#242426",
-            show_checkbox_column=False,
-        )
-
-        def btn_grid(text, icon_name, color, action):
-            return ft.Column(
-                [
-                    ft.ElevatedButton(
-                        content=ft.Row(
-                            [
-                                ft.Icon(icon_name, size=15, color="white"),
-                                ft.Text(text, size=11, color="white"),
-                            ],
-                            spacing=4,
-                            alignment=ft.MainAxisAlignment.CENTER,
-                        ),
-                        bgcolor=color,
-                        height=38,
-                        style=button_style,
-                        on_click=action,
-                    )
-                ],
-                col={"xs": 6, "sm": 4, "md": 3},
-            )
-
-        actions_grid = ft.ResponsiveRow(
-            controls=[
-                btn_grid("Voir PDF", "picture_as_pdf", "#2B719E", self.ouvrir_pdf_selectionne),
-                btn_grid("Générer PDF", "save_alt", "#8B5CF6", self.exporter_pdf_organise),
-                btn_grid("Modifier", "edit", "#F59E0B", self.modifier_selectionne),
-                btn_grid("Marquer Payée", "euro", "#10B981", self.marquer_payee),
-                btn_grid("URSSAF", "check_circle", "#16A34A", self.declarer_urssaf),
-                btn_grid("Convertir Devis", "transform", "#0EA5E9", self.convertir_devis_en_facture),
-                btn_grid("Export CSV", "table_chart", "#4F46E5", self.exporter_csv),
-                btn_grid("Supprimer", "delete", "#DC2626", self.supprimer_selectionne),
-            ],
-            spacing=6,
-        )
-
-        self.content = ft.Column(
-            controls=[
-                header,
-                creation_block,
-                ft.Row([self.search_entry]),
-                self.display_container,
-                actions_grid,
-            ],
-            spacing=10,
-            expand=True,
-        )
-
+    # =========================================================================
+    # LOGIQUE RAFRAÎCHISSEMENT ET FILTRAGE
+    # =========================================================================
     def _refresh_table(self, e=None):
-        try:
-            self.documents.clear()
-            self.table.rows.clear()
-            query = (
-                self.search_entry.value.strip().lower()
-                if self.search_entry and self.search_entry.value
-                else ""
-            )
+        if hasattr(self.app, "load_data"):
+            self.app.load_data()
 
-            filtered_docs = []
+        self.documents.clear()
+        query = (
+            self.search_entry.value.strip().lower()
+            if self.search_entry and self.search_entry.value
+            else ""
+        )
 
-            devis_raw = getattr(self.app, "devis", [])
-            devis_list = devis_raw if isinstance(devis_raw, list) else []
-            for devis in devis_list:
-                if self._match_query(devis, "devis", query):
-                    filtered_docs.append((devis, "devis"))
+        filtered_docs = []
 
-            factures_raw = getattr(self.app, "factures", [])
-            factures_list = factures_raw if isinstance(factures_raw, list) else []
-            for facture in factures_list:
-                if self._match_query(facture, "facture", query):
-                    filtered_docs.append((facture, "facture"))
+        # Parcours Devis
+        for devis in getattr(self.app, "devis", []):
+            if self._match_query(devis, "devis", query):
+                num = str(devis.get("numero", ""))
+                self.documents[("devis", num)] = devis
+                filtered_docs.append(("devis", num, devis))
 
-            if self._is_mobile():
-                self._render_mobile_cards(filtered_docs)
-            else:
-                self._render_desktop_table(filtered_docs)
+        # Parcours Factures
+        for facture in getattr(self.app, "factures", []):
+            if self._match_query(facture, "facture", query):
+                num = str(facture.get("numero", ""))
+                self.documents[("facture", num)] = facture
+                filtered_docs.append(("facture", num, facture))
 
-            self.safe_update()
-        except Exception as ex:
-            print(f"Erreur _refresh_table : {ex}")
+        if self._is_mobile():
+            self._render_mobile(filtered_docs)
+        else:
+            self._render_desktop(filtered_docs)
 
-    def _render_desktop_table(self, docs):
-        for doc, type_doc in docs:
-            self._insert_document_row(doc, type_doc)
+        self.safe_update()
 
-        if not docs:
-            self.display_container.content = ft.Container(
-                content=ft.Text("Aucun document trouvé.", color="#AEAEB2", size=13),
-                padding=15,
-            )
-            return
+    def _match_query(self, doc, type_doc, query):
+        if not query:
+            return True
+        num = str(doc.get("numero", "")).lower()
+        client_nom = extract_client_name(doc.get("client", {})).lower()
+        statut = str(doc.get("statut", "")).lower()
+        return query in num or query in client_nom or query in statut or query in type_doc
+
+    # =========================================================================
+    # RENDU DEKSTOP ET MOBILE
+    # =========================================================================
+    def _render_desktop(self, filtered_docs):
+        self.table.rows.clear()
+        for type_doc, num, doc in filtered_docs:
+            key = (type_doc, num)
+            is_selected = self.selected_key == key
+
+            row = ft.DataRow(cells=[], selected=is_selected)
+
+            def make_select_handler(k):
+                return lambda e: self._select_document(k)
+
+            def make_double_click_handler(d):
+                return lambda e: self.ouvrir_pdf(d)
+
+            nom = extract_client_name(doc.get("client", {}))
+            montant = float(doc.get("total_ttc", doc.get("montant_ttc", 0)))
+
+            statut = doc.get("statut", "-")
+            if statut == "Payée" and doc.get("date_paiement"):
+                statut = f"Payée ({doc.get('date_paiement')})"
+
+            urssaf_txt = "Oui" if doc.get("urssaf_declare") else "Non"
+
+            row.cells = [
+                ft.DataCell(ft.Text(type_doc.capitalize(), color="white"), on_tap=make_select_handler(key)),
+                ft.DataCell(
+                    ft.Text(str(num), color="white", weight=ft.FontWeight.BOLD),
+                    on_tap=make_select_handler(key),
+                    on_double_tap=make_double_click_handler(doc),
+                ),
+                ft.DataCell(ft.Text(nom, color="white"), on_tap=make_select_handler(key)),
+                ft.DataCell(ft.Text(f"{montant:.2f} €", color="white"), on_tap=make_select_handler(key)),
+                ft.DataCell(
+                    ft.Text(
+                        str(statut),
+                        color="#34D399" if "payée" in str(statut).lower() or "déclarée" in str(statut).lower() else "#FBBF24",
+                    ),
+                    on_tap=make_select_handler(key),
+                ),
+                ft.DataCell(ft.Text(urssaf_txt, color="white"), on_tap=make_select_handler(key)),
+            ]
+
+            self.table.rows.append(row)
 
         self.display_container.content = ft.Container(
-            content=ft.Column(
-                controls=[ft.Row(controls=[self.table], scroll=ft.ScrollMode.AUTO)],
-                scroll=ft.ScrollMode.AUTO,
-                expand=True,
-            ),
+            content=ft.Column([self.table], scroll=ft.ScrollMode.AUTO, expand=True),
             bgcolor="#141416",
             border_radius=10,
             border=safe_border(1, "#2A2A2E"),
@@ -354,654 +329,352 @@ class FacturationView(ft.Container):
             expand=True,
         )
 
-    def _render_mobile_cards(self, docs):
-        cards_list = []
-
-        for doc, type_doc in docs:
-            num = str(doc.get("numero", ""))
+    def _render_mobile(self, filtered_docs):
+        cards = []
+        for type_doc, num, doc in filtered_docs:
             key = (type_doc, num)
-            self.documents[key] = doc
+            is_selected = self.selected_key == key
 
-            client = doc.get("client", {})
-            nom = client.get("nom", "Inconnu") if isinstance(client, dict) else str(client)
+            nom = extract_client_name(doc.get("client", {}))
+            montant = float(doc.get("total_ttc", doc.get("montant_ttc", 0)))
             statut = doc.get("statut", "-")
-            total_ttc = f"{float(doc.get('total_ttc', 0)):.2f} €"
-            is_selected = self.selected_doc_key == key
 
             def make_select_handler(k):
-                return lambda e: self._select_card(k)
+                return lambda e: self._select_document(k)
 
-            card_content = ft.Container(
-                bgcolor="#1E1E22" if not is_selected else "#2A3A4E",
-                border=safe_border(
-                    1.5 if is_selected else 1,
-                    self.accent_color if is_selected else "#2A2A32",
-                ),
-                border_radius=10,
-                padding=12,
-                on_click=make_select_handler(key),
-                content=ft.Column(
-                    [
-                        ft.Row(
-                            [
-                                ft.Container(
-                                    content=ft.Text(
-                                        type_doc.upper(),
-                                        size=10,
-                                        weight=ft.FontWeight.BOLD,
-                                        color="white",
-                                    ),
-                                    bgcolor=(
-                                        self.accent_color if type_doc == "facture" else "#8B5CF6"
-                                    ),
-                                    padding=4,
-                                    border_radius=4,
-                                ),
-                                ft.Text(num, weight=ft.FontWeight.BOLD, color="white", size=14),
-                                ft.Text(
-                                    total_ttc,
-                                    weight=ft.FontWeight.BOLD,
-                                    color="#10B981" if type_doc == "facture" else "#2B719E",
-                                    size=14,
-                                ),
-                            ],
-                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        ),
-                        ft.Text(f"Client : {nom}", size=12, color="#AEAEB2"),
-                        ft.Row(
-                            [
-                                ft.Text(
-                                    f"Statut : {statut}",
-                                    size=11,
-                                    color="#34D399" if "Payée" in statut else "#F59E0B",
-                                ),
-                                ft.Text(
-                                    f"URSSAF : {'Oui' if doc.get('urssaf_declare') else 'Non'}",
-                                    size=11,
-                                    color="#AEAEB2",
-                                ),
-                            ],
-                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        ),
-                    ],
-                    spacing=6,
-                ),
-            )
-            cards_list.append(card_content)
-
-        if not cards_list:
-            cards_list.append(ft.Text("Aucun document trouvé.", color="#AEAEB2", size=13))
-
-        self.display_container.content = ft.ListView(
-            controls=cards_list,
-            spacing=8,
-            expand=True,
-        )
-
-    def _select_card(self, key):
-        self.selected_doc_key = key
-        self._refresh_table()
-
-    def _match_query(self, doc, type_doc, query):
-        if not query:
-            return True
-        num = str(doc.get("numero", "")).lower()
-        client = doc.get("client", {})
-        nom = client.get("nom", "").lower() if isinstance(client, dict) else str(client).lower()
-        statut = str(doc.get("statut", "")).lower()
-        return query in num or query in nom or query in statut or query in type_doc
-
-    def _insert_document_row(self, doc, type_doc):
-        num = str(doc.get("numero", ""))
-        key = (type_doc, num)
-        self.documents[key] = doc
-
-        client = doc.get("client", {})
-        nom = client.get("nom", "Inconnu") if isinstance(client, dict) else str(client)
-        statut = doc.get("statut", "-")
-        if statut == "Payée" and doc.get("date_paiement"):
-            statut = f"Payée ({doc.get('date_paiement')})"
-
-        total_ttc = f"{float(doc.get('total_ttc', 0)):.2f} €"
-        urssaf = "Oui" if doc.get("urssaf_declare") else "Non"
-        row = ft.DataRow(cells=[])
-
-        def handle_single_tap(e):
-            for r in self.table.rows:
-                r.selected = False
-            row.selected = True
-            self.selected_doc_key = key
-            self.safe_update()
-
-        def handle_double_tap(e):
-            handle_single_tap(e)
-            self.exporter_pdf_direct(type_doc, doc, ouvrir_apres=True)
-
-        def create_clickable_cell(text, color=None, weight=None):
-            return ft.DataCell(
-                ft.GestureDetector(
-                    content=ft.Container(
-                        content=ft.Text(text, color=color, weight=weight),
-                        alignment=ft.alignment.center_left,
-                        bgcolor="transparent",
-                        expand=True,
+            cards.append(
+                ft.Container(
+                    bgcolor="#2A3A4E" if is_selected else "#1E1E22",
+                    border=safe_border(1.5 if is_selected else 1, self.accent_color if is_selected else "#2A2A32"),
+                    border_radius=10,
+                    padding=12,
+                    on_click=make_select_handler(key),
+                    content=ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.Text(f"[{type_doc.upper()}] {num}", weight=ft.FontWeight.BOLD, color="white"),
+                                    ft.Text(f"{montant:.2f} €", color="#10B981", weight=ft.FontWeight.BOLD),
+                                ],
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            ),
+                            ft.Text(f"Client : {nom}", color="white", size=12),
+                            ft.Text(f"Statut : {statut}", size=11, color="#AEAEB2"),
+                        ],
+                        spacing=4,
                     ),
-                    on_tap=handle_single_tap,
-                    on_double_tap=handle_double_tap,
                 )
             )
 
-        row.cells = [
-            create_clickable_cell(type_doc.capitalize(), weight=ft.FontWeight.W_500),
-            create_clickable_cell(num),
-            create_clickable_cell(nom),
-            create_clickable_cell(total_ttc, color="#10B981" if type_doc == "facture" else "#2B719E"),
-            create_clickable_cell(statut),
-            create_clickable_cell(urssaf, color="#10B981" if urssaf == "Oui" else "#636366"),
-        ]
-        self.table.rows.append(row)
+        self.display_container.content = ft.ListView(controls=cards, spacing=8, expand=True)
+
+    def _select_document(self, key):
+        if self.selected_key == key:
+            self.selected_key = None
+        else:
+            self.selected_key = key
+        self._refresh_table()
 
     def _selected_document(self):
-        if not self.selected_doc_key:
-            self.show_snack("Veuillez d'abord sélectionner un document.", is_error=True)
+        if not self.selected_key or self.selected_key not in self.documents:
+            self._show_snack("Veuillez sélectionner un document dans le tableau.", is_error=True)
             return None, None
-        type_doc, num_doc = self.selected_doc_key
-        return type_doc, self.documents.get((type_doc, num_doc))
+        type_doc, num = self.selected_key
+        return type_doc, self.documents.get(self.selected_key)
 
-    def ouvrir_pdf_selectionne(self, e=None):
-        type_doc, doc = self._selected_document()
-        if doc:
-            self.exporter_pdf_direct(type_doc, doc, ouvrir_apres=True)
+    # =========================================================================
+    # ACTIONS DU MENU
+    # =========================================================================
+    def _creer_document(self, doc_type="devis"):
+        if hasattr(self.app, "navigate_to"):
+            self.app.navigate_to("CreateDocument", doc_type=doc_type)
 
-    def exporter_pdf_organise(self, e=None):
-        type_doc, doc = self._selected_document()
-        if doc:
-            self.exporter_pdf_direct(type_doc, doc, ouvrir_apres=False)
-
-    def _trouver_chemin_valide(self, chemin_initial):
-        if not chemin_initial:
-            return ""
-
-        try:
-            p_init = Path(chemin_initial)
-            if p_init.exists() and p_init.is_file():
-                return str(p_init.resolve())
-        except Exception:
-            pass
-
-        base_dirs = []
-        if hasattr(self.app, "data_dir") and self.app.data_dir:
-            base_dirs.append(Path(self.app.data_dir))
-
-        try:
-            base_dirs.append(Path.cwd())
-        except Exception:
-            pass
-
-        try:
-            base_dirs.append(Path(__file__).parent)
-            base_dirs.append(Path(__file__).parent / "assets")
-        except Exception:
-            pass
-
-        for d in base_dirs:
-            try:
-                t1 = d / Path(chemin_initial).name
-                if t1.exists() and t1.is_file():
-                    return str(t1.resolve())
-                t2 = d / chemin_initial
-                if t2.exists() and t2.is_file():
-                    return str(t2.resolve())
-            except Exception:
-                continue
-        return ""
-
-    def exporter_pdf_direct(self, type_doc, doc, ouvrir_apres=False):
-        if not REPORTLAB_AVAILABLE:
-            return self.show_snack("ReportLab n'est pas disponible pour générer des PDF.", is_error=True)
-
-        date_str = doc.get("date_creation", datetime.now().strftime("%d/%m/%Y"))
-        try:
-            parts = date_str.split("/")
-            j, m, a = parts[0], parts[1], parts[2]
-        except Exception:
-            now = datetime.now()
-            j, m, a = f"{now.day:02d}", f"{now.month:02d}", f"{now.year}"
-
-        subfolder = Path("Documents_PDF") / type_doc.capitalize() / a / m
-        folder_path = self._get_writable_dir(subfolder)
-
-        try:
-            file_name = f"{doc.get('numero', 'SANS_NUMERO')}.pdf"
-            full_path = folder_path / file_name
-
-            self._generate_pdf_file(type_doc, doc, str(full_path))
-
-            doc["pdf_path"] = str(full_path)
-            doc["pdf_to_load"] = str(full_path)
-            doc["type_doc_interne"] = type_doc
-
-            if ouvrir_apres:
-                if hasattr(self.app, "navigate_to"):
-                    self.app.current_doc = doc
-                    self.app.navigate_to("PDFViewer")
-                else:
-                    self.show_snack(f"PDF généré : {file_name}")
-            else:
-                self.show_snack(f"⚡ PDF enregistré : {file_name}")
-        except Exception as ex:
-            self.show_snack(f"Erreur création PDF : {ex}", is_error=True)
-
-    def _generate_pdf_file(self, type_doc, doc, file_path):
-        doc_pdf = SimpleDocTemplate(
-            file_path,
-            pagesize=A4,
-            rightMargin=35,
-            leftMargin=35,
-            topMargin=35,
-            bottomMargin=45,
-        )
-        story = []
-        styles = getSampleStyleSheet()
-
-        ent = getattr(self.app, "entreprise", {})
-        ent_nom = ent.get("nom", "MA SOCIÉTÉ").upper()
-        ent_siret = ent.get("siret", "")
-        ent_adresse = ent.get("adresse", "Adresse non renseignée")
-        ent_cp = ent.get("code_postal", ent.get("cp", ""))
-        ent_ville = ent.get("ville", "")
-        ent_email = ent.get("email", "")
-        ent_tel = ent.get("telephone", "")
-
-        ent_bloc_adresse = f"{ent_adresse}"
-        if ent_cp or ent_ville:
-            ent_bloc_adresse += f"<br/>{ent_cp} {ent_ville}".strip()
-
-        type_labels = {
-            "devis": "DEVIS",
-            "facture": "FACTURE",
-            "bl": "BON DE LIVRAISON",
-            "bc": "BON DE COMMANDE",
-        }
-        label_doc = type_labels.get(type_doc.lower(), type_doc.upper())
-
-        style_ent_body = ParagraphStyle(
-            "EntBody",
-            fontName="Helvetica",
-            fontSize=9,
-            leading=13,
-            textColor=rl_colors.HexColor("#4B5563"),
-        )
-        style_doc_meta = ParagraphStyle(
-            "DocMeta",
-            fontName="Helvetica",
-            fontSize=9,
-            leading=14,
-            textColor=rl_colors.HexColor("#111827"),
-            alignment=2,
-        )
-        style_client_body = ParagraphStyle(
-            "CliBody",
-            fontName="Helvetica",
-            fontSize=10,
-            leading=14,
-            textColor=rl_colors.HexColor("#111827"),
-        )
-
-        cell_text = ParagraphStyle(
-            "CellText",
-            fontName="Helvetica",
-            fontSize=9,
-            leading=12,
-            textColor=rl_colors.HexColor("#111827"),
-        )
-        cell_right = ParagraphStyle(
-            "CellRight",
-            fontName="Helvetica",
-            fontSize=9,
-            leading=12,
-            textColor=rl_colors.HexColor("#111827"),
-            alignment=2,
-        )
-        cell_right_bold = ParagraphStyle(
-            "CellRightBold",
-            fontName="Helvetica-Bold",
-            fontSize=9,
-            leading=12,
-            textColor=rl_colors.HexColor("#111827"),
-            alignment=2,
-        )
-
-        mentions_text = ent.get(
-            "mentions_legales",
-            f"SIRET : {ent_siret} - Enregistré conformément à la loi.",
-        )
-
-        txt_entreprise = f"<b>{ent_nom}</b><br/>{ent_bloc_adresse}<br/>"
-        if ent_tel:
-            txt_entreprise += f"Tel : {ent_tel}<br/>"
-        if ent_email:
-            txt_entreprise += f"Email : {ent_email}<br/>"
-        if ent_siret:
-            txt_entreprise += f"SIRET : {ent_siret}"
-
-        entreprise_elements = []
-        logo_path = self._trouver_chemin_valide(ent.get("logo_path", ent.get("logo", "")))
-        if logo_path:
-            try:
-                entreprise_elements.append(Image(logo_path, width=110, height=45))
-                entreprise_elements.append(Spacer(1, 8))
-            except Exception:
-                pass
-        entreprise_elements.append(Paragraph(txt_entreprise, style_ent_body))
-
-        num = doc.get("numero", "INCONNU")
-        date_crea = doc.get("date_creation", "-")
-        txt_metadonnees = f"<font size=20 color='{self.accent_color}'><b>{label_doc}</b></font><br/><br/>"
-        txt_metadonnees += f"<b>N° :</b> {num}<br/>"
-        txt_metadonnees += f"<b>Date :</b> {date_crea}<br/>"
-
-        header_table = Table(
-            [[entreprise_elements, Paragraph(txt_metadonnees, style_doc_meta)]],
-            colWidths=[260, 265],
-        )
-        header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
-        story.append(header_table)
-        story.append(Spacer(1, 25))
-
-        c_info = doc.get("client", {})
-        nom_c = c_info.get("nom", "Inconnu") if isinstance(c_info, dict) else str(c_info)
-        prenom_c = c_info.get("prenom", c_info.get("prénom", "")) if isinstance(c_info, dict) else ""
-        adr_c = c_info.get("adresse", "Adresse non renseignée") if isinstance(c_info, dict) else ""
-        cp_c = c_info.get("code_postal", c_info.get("cp", "")) if isinstance(c_info, dict) else ""
-        ville_c = c_info.get("ville", "") if isinstance(c_info, dict) else ""
-        tel_c = c_info.get("telephone", "") if isinstance(c_info, dict) else ""
-
-        cli_bloc_adresse = f"{adr_c}"
-        if cp_c or ville_c:
-            cli_bloc_adresse += f"<br/>{cp_c} {ville_c}".strip()
-
-        identite_client = f"{prenom_c} {nom_c}".strip() if prenom_c else nom_c
-        txt_client = f"<b>DESTINATAIRE</b><br/><b>{identite_client}</b><br/>{cli_bloc_adresse}"
-        if tel_c:
-            txt_client += f"<br/>Tel : {tel_c}"
-
-        client_table = Table([["", Paragraph(txt_client, style_client_body)]], colWidths=[260, 265])
-        client_table.setStyle(
-            TableStyle([
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("BACKGROUND", (1, 0), (1, 0), rl_colors.HexColor("#F9FAFB")),
-                ("PADDING", (1, 0), (1, 0), 12),
-                ("BOX", (1, 0), (1, 0), 0.5, rl_colors.HexColor("#E5E7EB")),
-            ])
-        )
-        story.append(client_table)
-        story.append(Spacer(1, 30))
-
-        headers = [
-            Paragraph("<b>Désignation</b>", ParagraphStyle("H1", fontName="Helvetica-Bold", fontSize=9, textColor=rl_colors.white)),
-            Paragraph("<b>Qté</b>", ParagraphStyle("H2", fontName="Helvetica-Bold", fontSize=9, textColor=rl_colors.white, alignment=2)),
-            Paragraph("<b>Prix U. HT</b>", ParagraphStyle("H3", fontName="Helvetica-Bold", fontSize=9, textColor=rl_colors.white, alignment=2)),
-            Paragraph("<b>Total HT</b>", ParagraphStyle("H4", fontName="Helvetica-Bold", fontSize=9, textColor=rl_colors.white, alignment=2)),
-        ]
-        table_data = [headers]
-
-        lines = doc.get("lignes", doc.get("articles", []))
-        for item in lines:
-            des = item.get("designation", item.get("nom", "Prestation"))
-            qte = str(item.get("quantite", item.get("qte", 1)))
-            pu = f"{float(item.get('prix_unitaire', item.get('prix', 0))):.2f} €"
-            tot = f"{float(item.get('total_ht', item.get('montant', 0))):.2f} €"
-            table_data.append([
-                Paragraph(des, cell_text),
-                Paragraph(qte, cell_right),
-                Paragraph(pu, cell_right),
-                Paragraph(tot, cell_right),
-            ])
-
-        tot_ht = f"{float(doc.get('total_ht', doc.get('montant_ht', 0))):.2f} €"
-        tot_tva = f"{float(doc.get('tva', doc.get('montant_tva', 0))):.2f} €"
-        tot_ttc = f"{float(doc.get('total_ttc', doc.get('montant_ttc', 0))):.2f} €"
-
-        table_data.append(["", "", Paragraph("Total HT", cell_right_bold), Paragraph(tot_ht, cell_right)])
-        table_data.append(["", "", Paragraph("TVA", cell_right_bold), Paragraph(tot_tva, cell_right)])
-        table_data.append(["", "", Paragraph("Total TTC", cell_right_bold), Paragraph(tot_ttc, cell_right_bold)])
-
-        t_lines = Table(table_data, colWidths=[285, 40, 100, 100])
-        ts = TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor(self.accent_color)),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, 0), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
-        ])
-
-        for i in range(1, len(lines) + 1):
-            ts.add("BACKGROUND", (0, i), (-1, i), rl_colors.HexColor("#FFFFFF") if i % 2 != 0 else rl_colors.HexColor("#F9FAFB"))
-            ts.add("LINEBELOW", (0, i), (-1, i), 0.5, rl_colors.HexColor("#F3F4F6"))
-
-        ts.add("LINEABOVE", (2, -3), (3, -3), 1, rl_colors.HexColor("#E5E7EB"))
-        ts.add("BACKGROUND", (2, -1), (3, -1), rl_colors.HexColor("#F3F4F6"))
-        t_lines.setStyle(ts)
-        story.append(t_lines)
-
-        story.append(Spacer(1, 30))
-        signature_elements = []
-
-        if type_doc.lower() in ["devis", "bc"]:
-            signature_elements.append(
-                Paragraph("<b>Bon pour accord</b><br/><font size=7 color='#6B7280'>Mention 'Lu et approuvé' obligatoire :</font>", cell_text)
-            )
-        else:
-            signature_elements.append(Paragraph("<b>Cachet &amp; Signature</b>", cell_text))
-
-        signature_elements.append(Spacer(1, 5))
-
-        sig_raw_path = doc.get("signature_path", doc.get("signature_img_path", ent.get("signature_pad", "")))
-        sig_img_path = self._trouver_chemin_valide(sig_raw_path)
-
-        if sig_img_path:
-            try:
-                signature_elements.append(Image(sig_img_path, width=150, height=50))
-            except Exception:
-                signature_elements.append(Spacer(1, 50))
-        else:
-            signature_elements.append(Spacer(1, 50))
-
-        moment_signature = datetime.now().strftime("%d/%m/%Y à %H:%M")
-        signature_elements.append(Spacer(1, 4))
-        signature_elements.append(
-            Paragraph(
-                f"<font size=7.5 color='#1F2937'><b>Signé électroniquement le {moment_signature}</b></font>",
-                ParagraphStyle("SigSub", fontName="Helvetica-Bold"),
-            )
-        )
-
-        tab_signature = Table([["", signature_elements]], colWidths=[325, 200])
-        tab_signature.setStyle(
-            TableStyle([
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("BACKGROUND", (1, 0), (1, 0), rl_colors.HexColor("#F9FAFB")),
-                ("PADDING", (1, 0), (1, 0), 12),
-                ("BOX", (1, 0), (1, 0), 0.75, rl_colors.HexColor("#D1D5DB")),
-                ("LINEBELOW", (1, 0), (1, 0), 2, rl_colors.HexColor(self.accent_color)),
-            ])
-        )
-        story.append(tab_signature)
-
-        story.append(Spacer(1, 20))
-        story.append(
-            Paragraph(
-                f"<b>Mentions légales :</b> {mentions_text}",
-                ParagraphStyle(
-                    "MentionsCorp",
-                    fontName="Helvetica-Oblique",
-                    fontSize=7.5,
-                    leading=11,
-                    textColor=rl_colors.HexColor("#6B7280"),
-                ),
-            )
-        )
-
-        if NumberedCanvas:
-            canvas_maker = NumberedCanvas
-            canvas_maker._entreprise_nom = ent_nom
-            canvas_maker._entreprise_siret = ent_siret
-            canvas_maker._entreprise_mentions = mentions_text
-            doc_pdf.build(story, canvasmaker=canvas_maker)
-        else:
-            doc_pdf.build(story)
+    def ouvrir_pdf(self, doc=None):
+        if not doc:
+            _, doc = self._selected_document()
+        if doc and hasattr(self.app, "navigate_to"):
+            self.app.navigate_to("PDFViewer", doc=doc)
 
     def modifier_selectionne(self, e=None):
+        type_doc, doc = self._selected_document()
+        if doc and hasattr(self.app, "navigate_to"):
+            self.app.navigate_to("CreateDocument", doc_type=type_doc, doc_to_edit=doc)
+
+    def marquer_payee(self, e=None):
+        """Passe le statut de la facture à 'Payée' avec la date du jour et déduit le stock."""
         type_doc, doc = self._selected_document()
         if not doc:
             return
 
-        try:
-            from views.create_document import CreateDocumentView
+        if type_doc != "facture":
+            return self._show_snack("Seules les factures peuvent être marquées comme payées.", is_error=True)
 
-            if hasattr(self.app, "content_area"):
-                self.app.content_area.content = CreateDocumentView(app=self.app, doc_type=type_doc, doc_to_edit=doc)
-            self.safe_update()
-        except Exception as ex:
-            self.show_snack(f"Impossible de charger le formulaire d'édition : {ex}", is_error=True)
+        if doc.get("statut") == "Payée":
+            return self._show_snack(f"Cette facture a déjà été réglée le {doc.get('date_paiement', 'inconnue')}.")
+
+        date_aujourdhui = datetime.now().strftime("%d/%m/%Y")
+
+        def valider(_):
+            doc["statut"] = "Payée"
+            doc["date_paiement"] = date_aujourdhui
+
+            # 📦 RETRAIT DES STOCKS AUTOMATIQUE
+            self._deduire_stock_pour_facture(doc)
+
+            if hasattr(self.app, "save_data"):
+                self.app.save_data()
+
+            self._close_dialog(dialog)
+            self._refresh_table()
+            self._show_snack(f"Facture {doc['numero']} enregistrée comme 'Payée' et stock déduit !")
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("💶 Encaissement"),
+            content=ft.Text(
+                f"Confirmer l'encaissement de la facture n°{doc['numero']} le {date_aujourdhui} ?\n(Le stock d'articles sera déduit)"
+            ),
+            actions=[
+                ft.TextButton("Annuler", on_click=lambda _: self._close_dialog(dialog)),
+                ft.ElevatedButton("Confirmer", bgcolor="#10B981", color="white", on_click=valider),
+            ],
+        )
+        self._open_dialog(dialog)
+
+    def declarer_urssaf(self, e=None):
+        """Marque une facture comme déclarée à l'URSSAF."""
+        type_doc, doc = self._selected_document()
+        if not doc:
+            return
+
+        if type_doc != "facture":
+            return self._show_snack("Seules les factures peuvent être déclarées à l'URSSAF.", is_error=True)
+
+        if doc.get("urssaf_declare"):
+            return self._show_snack("Cette facture a déjà été déclarée à l'URSSAF.")
+
+        def valider(_):
+            doc["urssaf_declare"] = True
+            doc["statut"] = "Déclarée"
+            if hasattr(self.app, "save_data"):
+                self.app.save_data()
+            self._close_dialog(dialog)
+            self._refresh_table()
+            self._show_snack("Facture marquée comme déclarée à l'URSSAF. ✅")
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("✅ Déclaration URSSAF"),
+            content=ft.Text(f"Marquer la facture n°{doc['numero']} comme déclarée à l'URSSAF ?"),
+            actions=[
+                ft.TextButton("Annuler", on_click=lambda _: self._close_dialog(dialog)),
+                ft.ElevatedButton("Confirmer", bgcolor="#16A34A", color="white", on_click=valider),
+            ],
+        )
+        self._open_dialog(dialog)
+
+    def convertir_devis_en_facture(self, e=None):
+        """Convertit un devis signé en facture."""
+        type_doc, doc = self._selected_document()
+        if not doc:
+            return
+
+        if type_doc != "devis":
+            return self._show_snack("Vous devez sélectionner un devis pour effectuer cette action.", is_error=True)
+
+        if doc.get("statut") != "Signé":
+            return self._show_snack("Le devis doit être au statut 'Signé' pour être converti en facture.", is_error=True)
+
+        nouvelle_facture = {
+            "numero": self._next_invoice_number(),
+            "client": doc.get("client"),
+            "articles": list(doc.get("articles", [])),
+            "lignes": list(doc.get("lignes", doc.get("articles", []))),
+            "total_ht": doc.get("total_ht", doc.get("montant_ht", 0)),
+            "montant_ht": doc.get("montant_ht", doc.get("total_ht", 0)),
+            "tva": doc.get("tva", doc.get("montant_tva", 0)),
+            "montant_tva": doc.get("montant_tva", doc.get("tva", 0)),
+            "total_ttc": doc.get("total_ttc", doc.get("montant_ttc", 0)),
+            "montant_ttc": doc.get("montant_ttc", doc.get("total_ttc", 0)),
+            "date_creation": datetime.now().strftime("%d/%m/%Y"),
+            "statut": "À payer",
+            "urssaf_declare": False,
+            "stock_deduit": False,
+        }
+
+        if not hasattr(self.app, "factures") or not isinstance(self.app.factures, list):
+            self.app.factures = []
+
+        self.app.factures.append(nouvelle_facture)
+        doc["statut"] = "Accepté / Converti"
+
+        if hasattr(self.app, "save_data"):
+            self.app.save_data()
+
+        self._refresh_table()
+        self._show_snack(f"Facture {nouvelle_facture['numero']} créée avec succès à partir du devis.")
 
     def supprimer_selectionne(self, e=None):
         type_doc, doc = self._selected_document()
         if not doc:
             return
 
-        page_obj = self.page or getattr(self.app, "page", None)
-        if not page_obj:
-            return
+        def valider(_):
+            if type_doc == "devis" and hasattr(self.app, "devis"):
+                self.app.devis.remove(doc)
+            elif type_doc == "facture" and hasattr(self.app, "factures"):
+                self.app.factures.remove(doc)
 
-        def confirmation_action(confirme):
-            if hasattr(page_obj, "close"):
-                page_obj.close(dialog)
-            else:
-                dialog.open = False
-                page_obj.update()
+            self.selected_key = None
+            if hasattr(self.app, "save_data"):
+                self.app.save_data()
 
-            if confirme:
-                if type_doc == "devis":
-                    if hasattr(self.app, "devis") and isinstance(self.app.devis, list) and doc in self.app.devis:
-                        self.app.devis.remove(doc)
-                else:
-                    if hasattr(self.app, "factures") and isinstance(self.app.factures, list) and doc in self.app.factures:
-                        self.app.factures.remove(doc)
-                if hasattr(self.app, "save_data"):
-                    self.app.save_data()
-                self.selected_doc_key = None
-                self._refresh_table()
-                self.show_snack("Le document a été supprimé.")
+            self._close_dialog(dialog)
+            self._refresh_table()
+            self._show_snack("Le document a été supprimé avec succès.")
 
         dialog = ft.AlertDialog(
-            title=ft.Text("🚨 Suppression"),
-            content=ft.Text(f"Supprimer le {type_doc} n°{doc.get('numero', '')} ?"),
+            title=ft.Text("🗑️ Suppression"),
+            content=ft.Text(f"Êtes-vous sûr de vouloir supprimer le {type_doc} n°{doc.get('numero')} ?"),
             actions=[
-                ft.TextButton("Annuler", on_click=lambda _: confirmation_action(False)),
-                ft.ElevatedButton("Supprimer", bgcolor="#B91C1C", color="white", on_click=lambda _: confirmation_action(True)),
+                ft.TextButton("Annuler", on_click=lambda _: self._close_dialog(dialog)),
+                ft.ElevatedButton("Supprimer", bgcolor="#DC2626", color="white", on_click=valider),
             ],
         )
+        self._open_dialog(dialog)
 
-        if hasattr(page_obj, "open"):
-            page_obj.open(dialog)
-        else:
-            page_obj.dialog = dialog
-            dialog.open = True
-            page_obj.update()
-
-    def marquer_payee(self, e=None):
-        type_doc, doc = self._selected_document()
-        if not doc:
+    # =========================================================================
+    # 📦 DÉDUCTION AUTOMATIQUE DU STOCK
+    # =========================================================================
+    def _deduire_stock_pour_facture(self, doc):
+        """Décrémente le stock de chaque article présent dans la facture."""
+        if doc.get("stock_deduit"):
             return
-        if type_doc != "facture":
-            return self.show_snack("Factures uniquement.", is_error=True)
 
-        date_aujourdhui = datetime.now().strftime("%d/%m/%Y")
-        doc["statut"] = "Payée"
-        doc["date_paiement"] = date_aujourdhui
-        if hasattr(self.app, "save_data"):
-            self.app.save_data()
-        self._refresh_table()
-        self.show_snack("Facture payée ! 💶")
+        items = doc.get("lignes") or doc.get("articles") or []
+        if not items:
+            return
+
+        if hasattr(self.app, "vue_articles") and hasattr(self.app.vue_articles, "deduire_stock_facture"):
+            self.app.vue_articles.deduire_stock_facture(items)
+        else:
+            articles_db = getattr(self.app, "articles", [])
+            for item in items:
+                ref_cible = str(item.get("ref", "")).strip().lower()
+                cb_cible = str(item.get("code_barre", "")).strip().lower()
+                qte_vendue = int(item.get("quantite", item.get("qte", 1)))
+
+                for art in articles_db:
+                    ref_art = str(art.get("ref", "")).strip().lower()
+                    cb_art = str(art.get("code_barre", "")).strip().lower()
+
+                    if (ref_cible and ref_cible == ref_art) or (cb_cible and cb_cible == cb_art):
+                        stock_actuel = int(art.get("stock", 0))
+                        art["stock"] = max(0, stock_actuel - qte_vendue)
+                        break
+
+            if hasattr(self.app, "save_data"):
+                self.app.save_data()
+
+        doc["stock_deduit"] = True
 
     def _next_invoice_number(self):
-        factures_list = getattr(self.app, "factures", [])
-        if not isinstance(factures_list, list):
-            factures_list = []
-        return f"FAC-{len(factures_list) + 1:03d}"
+        entreprise = getattr(self.app, "entreprise", {}) if hasattr(self.app, "entreprise") else {}
+        prefix = entreprise.get("prefix_facture", f"F{datetime.now().year}-")
+        maxi = 0
+        for f in getattr(self.app, "factures", []):
+            m = re.search(r"(\d+)$", str(f.get("numero", "")))
+            if m:
+                maxi = max(maxi, int(m.group(1)))
+        return f"{prefix}{maxi + 1:03d}"
 
-    def declarer_urssaf(self, e=None):
-        type_doc, doc = self._selected_document()
-        if not doc or type_doc != "facture":
-            return
-        doc["urssaf_declare"] = True
-        doc["statut"] = "Déclarée"
-        if hasattr(self.app, "save_data"):
-            self.app.save_data()
-        self._refresh_table()
-        self.show_snack("Marquée URSSAF. ✅")
-
-    def convertir_devis_en_facture(self, e=None):
-        type_doc, doc = self._selected_document()
-        if not doc or type_doc != "devis":
-            return
-
-        nouvelle_facture = {
-            "numero": self._next_invoice_number(),
-            "client": doc.get("client"),
-            "lignes": list(doc.get("lignes", doc.get("articles", []))),
-            "total_ht": doc.get("total_ht", 0),
-            "tva": doc.get("tva", 0),
-            "total_ttc": doc.get("total_ttc", 0),
-            "date_creation": datetime.now().strftime("%d/%m/%Y"),
-            "statut": "À payer",
-            "urssaf_declare": False,
-        }
-        if hasattr(self.app, "factures"):
-            if not isinstance(self.app.factures, list):
-                self.app.factures = []
-            self.app.factures.append(nouvelle_facture)
-        doc["statut"] = "Converti"
-        if hasattr(self.app, "save_data"):
-            self.app.save_data()
-        self._refresh_table()
-        self.show_snack("Facture créée ! 🔄")
-
+    # =========================================================================
+    # EXPORT CSV
+    # =========================================================================
     def exporter_csv(self, e=None):
+        self.file_picker.save_file(
+            dialog_title="Exporter l'historique comptable",
+            file_name="historique_comptable.csv",
+            allowed_extensions=["csv"],
+        )
+
+    def _on_csv_picked(self, e: ft.FilePickerResultEvent):
+        if not e.path:
+            return
+
+        filepath = e.path
         try:
-            export_dir = self._get_writable_dir("Exports")
-            csv_path = export_dir / "historique_comptable.csv"
-
-            with open(csv_path, mode="w", newline="", encoding="utf-8-sig") as f:
+            with open(filepath, mode="w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.writer(f, delimiter=";")
-                writer.writerow(["Type", "Numéro", "Client", "Total TTC", "Statut"])
-                factures_list = getattr(self.app, "factures", [])
-                if isinstance(factures_list, list):
-                    for f_doc in factures_list:
-                        client_val = f_doc.get("client", {})
-                        nom_client = client_val.get("nom") if isinstance(client_val, dict) else str(client_val)
-                        writer.writerow([
-                            "Facture",
-                            f_doc.get("numero"),
-                            nom_client,
-                            f_doc.get("total_ttc"),
-                            f_doc.get("statut"),
-                        ])
-            self.show_snack(f"CSV exporté dans : {csv_path.name}")
-        except Exception as ex:
-            self.show_snack(f"Erreur export CSV : {ex}", is_error=True)
+                writer.writerow([
+                    "Type Document",
+                    "Numéro",
+                    "Client",
+                    "Total HT (€)",
+                    "Total TTC (€)",
+                    "Statut",
+                    "Déclaré URSSAF",
+                    "Date Création",
+                    "Date Paiement",
+                ])
 
-    def show_snack(self, message, is_error=False):
-        page_obj = self.page or getattr(self.app, "page", None)
-        if page_obj:
+                for devis in getattr(self.app, "devis", []):
+                    nom_c = extract_client_name(devis.get("client", {}))
+                    writer.writerow([
+                        "Devis",
+                        devis.get("numero", ""),
+                        nom_c,
+                        f"{float(devis.get('total_ht', devis.get('montant_ht', 0))):.2f}",
+                        f"{float(devis.get('total_ttc', devis.get('montant_ttc', 0))):.2f}",
+                        devis.get("statut", "-"),
+                        "Non applicable",
+                        devis.get("date_creation", ""),
+                        "-",
+                    ])
+
+                for facture in getattr(self.app, "factures", []):
+                    nom_c = extract_client_name(facture.get("client", {}))
+                    writer.writerow([
+                        "Facture",
+                        facture.get("numero", ""),
+                        nom_c,
+                        f"{float(facture.get('total_ht', facture.get('montant_ht', 0))):.2f}",
+                        f"{float(facture.get('total_ttc', facture.get('montant_ttc', 0))):.2f}",
+                        facture.get("statut", "-"),
+                        "Oui" if facture.get("urssaf_declare") else "Non",
+                        facture.get("date_creation", ""),
+                        facture.get("date_paiement", "-"),
+                    ])
+
+            self._show_snack(f"Export CSV réussi : {filepath}")
+        except Exception as err:
+            self._show_snack(f"Erreur d'exportation : {err}", is_error=True)
+
+    # =========================================================================
+    # HELPERS MODALES & NOTIFICATIONS
+    # =========================================================================
+    def _open_dialog(self, dialog):
+        if hasattr(self.page, "open"):
+            self.page.open(dialog)
+        else:
+            self.page.dialog = dialog
+            dialog.open = True
+            self.page.update()
+
+    def _close_dialog(self, dialog):
+        if hasattr(self.page, "close"):
+            self.page.close(dialog)
+        else:
+            dialog.open = False
+            self.page.update()
+
+    def _show_snack(self, message, is_error=False):
+        if self.page:
             snack = ft.SnackBar(
                 content=ft.Text(message),
                 bgcolor="#B91C1C" if is_error else "#15803D",
             )
-            if hasattr(page_obj, "open"):
-                page_obj.open(snack)
+            if hasattr(self.page, "open"):
+                self.page.open(snack)
             else:
-                page_obj.snack_bar = snack
+                self.page.snack_bar = snack
                 snack.open = True
-                page_obj.update()
+                self.page.update()
