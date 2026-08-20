@@ -10,6 +10,10 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - name: Récupérer le code source
         uses: actions/checkout@v4
@@ -42,19 +46,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential cmake swig pkg-config libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libwebp-dev libgtk-3-dev ninja-build
 
-      - name: Acceptation des licences Android SDK
+      - name: Configuration d'Android SDK Platforms
         run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
           flutter config --no-analytics
           yes | flutter doctor --android-licenses || true
 
-      - name: Convertir automatiquement Flet 0.21.2 et remplacer Pillow/ReportLab
+      - name: Convertir automatiquement Flet 0.21.2 et nettoyer les dépendances
         run: |
           # Passage à Flet 0.24.1
           if [ -f "requirements.txt" ]; then sed -i 's/flet==0.21.2/flet==0.24.1/g' requirements.txt; fi
           if [ -f "pyproject.toml" ]; then sed -i 's/flet==0.21.2/flet==0.24.1/g' pyproject.toml; fi
           if [ -f "pyproject.toml" ]; then sed -i 's/flet>=0.21.2/flet==0.24.1/g' pyproject.toml; fi
 
-          # Remplacement automatique de reportlab/fpdf2 par fpdf 1.7.2 (sans Pillow)
+          # Remplacement de reportlab/fpdf2 par fpdf 1.7.2 (sans Pillow)
           if [ -f "requirements.txt" ]; then sed -i 's/reportlab/fpdf==1.7.2/g' requirements.txt; fi
           if [ -f "requirements.txt" ]; then sed -i 's/fpdf2/fpdf==1.7.2/g' requirements.txt; fi
           if [ -f "requirements.txt" ]; then sed -i '/pillow/d' requirements.txt; fi
