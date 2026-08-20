@@ -1,6 +1,7 @@
 import csv
 from datetime import datetime
 from pathlib import Path
+import tempfile
 import flet as ft
 
 # --- IMPORTS OPTIONNELS REPORTLAB ---
@@ -20,62 +21,64 @@ try:
     )
 
     REPORTLAB_AVAILABLE = True
-except ImportError:
-    pass
+except Exception:
+    REPORTLAB_AVAILABLE = False
+
+if REPORTLAB_AVAILABLE:
+    class NumberedCanvas(canvas.Canvas):
+        """Canvas personnalisé pour la numérotation et le pied de page PDF."""
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._saved_page_states = []
+
+        def showPage(self):
+            self._saved_page_states.append(dict(self.__dict__))
+            self._startPage()
+
+        def save(self):
+            num_pages = len(self._saved_page_states)
+            for state in self._saved_page_states:
+                self.__dict__.update(state)
+                self.draw_page_decorations(num_pages)
+                super().showPage()
+            super().save()
+
+        def draw_page_decorations(self, page_count):
+            self.saveState()
+            self.setFont("Helvetica", 8)
+            self.setFillColor(rl_colors.HexColor("#6B7280"))
+            self.setStrokeColor(rl_colors.HexColor("#E5E7EB"))
+            self.setLineWidth(0.5)
+            self.line(35, 45, A4[0] - 35, 45)
+
+            entreprise_nom = getattr(self, "_entreprise_nom", "Votre Entreprise")
+            siret = getattr(self, "_entreprise_siret", "")
+            mentions_custom = getattr(self, "_entreprise_mentions", "")
+
+            if mentions_custom:
+                mentions = (
+                    f"{entreprise_nom} — {mentions_custom[:100]}..."
+                    if len(mentions_custom) > 100
+                    else f"{entreprise_nom} — {mentions_custom}"
+                )
+            else:
+                mentions = (
+                    f"{entreprise_nom} {f'- SIRET : {siret}' if siret else ''} — Document"
+                    " généré automatiquement."
+                )
+
+            self.drawString(35, 30, mentions)
+            page_text = f"Page {self._pageNumber} sur {page_count}"
+            self.drawRightString(A4[0] - 35, 30, page_text)
+            self.restoreState()
+else:
+    NumberedCanvas = None
 
 
 def safe_border(width=1, color="#424242"):
     """Bordure universelle sécurisée."""
     return ft.border.all(width, color)
-
-
-class NumberedCanvas(canvas.Canvas if REPORTLAB_AVAILABLE else object):
-    """Canvas personnalisé pour la numérotation et le pied de page PDF."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._saved_page_states = []
-
-    def showPage(self):
-        self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()
-
-    def save(self):
-        num_pages = len(self._saved_page_states)
-        for state in self._saved_page_states:
-            self.__dict__.update(state)
-            self.draw_page_decorations(num_pages)
-            super().showPage()
-        super().save()
-
-    def draw_page_decorations(self, page_count):
-        self.saveState()
-        self.setFont("Helvetica", 8)
-        self.setFillColor(rl_colors.HexColor("#6B7280"))
-        self.setStrokeColor(rl_colors.HexColor("#E5E7EB"))
-        self.setLineWidth(0.5)
-        self.line(35, 45, A4[0] - 35, 45)
-
-        entreprise_nom = getattr(self, "_entreprise_nom", "Votre Entreprise")
-        siret = getattr(self, "_entreprise_siret", "")
-        mentions_custom = getattr(self, "_entreprise_mentions", "")
-
-        if mentions_custom:
-            mentions = (
-                f"{entreprise_nom} — {mentions_custom[:100]}..."
-                if len(mentions_custom) > 100
-                else f"{entreprise_nom} — {mentions_custom}"
-            )
-        else:
-            mentions = (
-                f"{entreprise_nom} {f'- SIRET : {siret}' if siret else ''} — Document"
-                " généré automatiquement."
-            )
-
-        self.drawString(35, 30, mentions)
-        page_text = f"Page {self._pageNumber} sur {page_count}"
-        self.drawRightString(A4[0] - 35, 30, page_text)
-        self.restoreState()
 
 
 class FacturationView(ft.Container):
@@ -125,7 +128,7 @@ class FacturationView(ft.Container):
                         color="#FCA5A5",
                         weight=ft.FontWeight.BOLD,
                     ),
-                    ft.Text(error_msg, color="white", size=11, selectable=True),
+                    ft.Text(error_msg, color="white", size=11),
                 ],
                 spacing=5,
             ),
@@ -138,11 +141,51 @@ class FacturationView(ft.Container):
     def _is_mobile(self):
         return self.page.width < 768 if self.page else False
 
+    def _get_writable_dir(self, subfolder=""):
+        """Retourne un dossier d'écriture sécurisé compatible Android (Scoped Storage)."""
+        base_dir = None
+
+        if hasattr(self.app, "data_dir") and self.app.data_dir:
+            try:
+                p = Path(self.app.data_dir)
+                p.mkdir(parents=True, exist_ok=True)
+                base_dir = p
+            except Exception:
+                base_dir = None
+
+        if base_dir is None and self.page and hasattr(self.page, "get_upload_dir"):
+            try:
+                upload_dir = self.page.get_upload_dir()
+                if upload_dir:
+                    p = Path(upload_dir)
+                    p.mkdir(parents=True, exist_ok=True)
+                    base_dir = p
+            except Exception:
+                base_dir = None
+
+        if base_dir is None:
+            try:
+                p = Path(tempfile.gettempdir()) / "facturation_app"
+                p.mkdir(parents=True, exist_ok=True)
+                base_dir = p
+            except Exception:
+                base_dir = Path.home()
+
+        if subfolder:
+            target = base_dir / subfolder
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+                return target
+            except Exception:
+                return base_dir
+
+        return base_dir
+
     def _build_interface(self):
         header = ft.Row(
             controls=[
                 ft.IconButton(
-                    icon="arrow_back_rounded",
+                    icon=ft.icons.ARROW_BACK_ROUNDED,
                     icon_color="white",
                     on_click=lambda e: self.app.navigate_to("Dashboard"),
                 ),
@@ -230,14 +273,14 @@ class FacturationView(ft.Container):
 
         actions_grid = ft.ResponsiveRow(
             controls=[
-                btn_grid("Voir PDF", "picture_as_pdf", "#2B719E", self.ouvrir_pdf_selectionne),
-                btn_grid("Générer PDF", "save_alt", "#8B5CF6", self.exporter_pdf_organise),
-                btn_grid("Modifier", "edit", "#F59E0B", self.modifier_selectionne),
-                btn_grid("Marquer Payée", "euro", "#10B981", self.marquer_payee),
-                btn_grid("URSSAF", "check_circle", "#16A34A", self.declarer_urssaf),
-                btn_grid("Convertir Devis", "transform", "#0EA5E9", self.convertir_devis_en_facture),
-                btn_grid("Export CSV", "table_chart", "#4F46E5", self.exporter_csv),
-                btn_grid("Supprimer", "delete", "#DC2626", self.supprimer_selectionne),
+                btn_grid("Voir PDF", ft.icons.PICTURE_AS_PDF, "#2B719E", self.ouvrir_pdf_selectionne),
+                btn_grid("Générer PDF", ft.icons.SAVE_ALT, "#8B5CF6", self.exporter_pdf_organise),
+                btn_grid("Modifier", ft.icons.EDIT, "#F59E0B", self.modifier_selectionne),
+                btn_grid("Marquer Payée", ft.icons.EURO, "#10B981", self.marquer_payee),
+                btn_grid("URSSAF", ft.icons.CHECK_CIRCLE, "#16A34A", self.declarer_urssaf),
+                btn_grid("Convertir Devis", ft.icons.TRANSFORM, "#0EA5E9", self.convertir_devis_en_facture),
+                btn_grid("Export CSV", ft.icons.TABLE_CHART, "#4F46E5", self.exporter_csv),
+                btn_grid("Supprimer", ft.icons.DELETE, "#DC2626", self.supprimer_selectionne),
             ],
             spacing=6,
         )
@@ -479,23 +522,38 @@ class FacturationView(ft.Container):
         if not chemin_initial:
             return ""
 
-        p_init = Path(chemin_initial)
-        if p_init.exists():
-            return str(p_init.resolve())
+        try:
+            p_init = Path(chemin_initial)
+            if p_init.exists() and p_init.is_file():
+                return str(p_init.resolve())
+        except Exception:
+            pass
 
         base_dirs = []
         if hasattr(self.app, "data_dir") and self.app.data_dir:
             base_dirs.append(Path(self.app.data_dir))
 
-        base_dirs.extend([Path.cwd(), Path(__file__).parent, Path(__file__).parent / "assets"])
+        try:
+            base_dirs.append(Path.cwd())
+        except Exception:
+            pass
+
+        try:
+            base_dirs.append(Path(__file__).parent)
+            base_dirs.append(Path(__file__).parent / "assets")
+        except Exception:
+            pass
 
         for d in base_dirs:
-            t1 = d / p_init.name
-            if t1.exists():
-                return str(t1.resolve())
-            t2 = d / chemin_initial
-            if t2.exists():
-                return str(t2.resolve())
+            try:
+                t1 = d / Path(chemin_initial).name
+                if t1.exists() and t1.is_file():
+                    return str(t1.resolve())
+                t2 = d / chemin_initial
+                if t2.exists() and t2.is_file():
+                    return str(t2.resolve())
+            except Exception:
+                continue
         return ""
 
     def exporter_pdf_direct(self, type_doc, doc, ouvrir_apres=False):
@@ -510,15 +568,10 @@ class FacturationView(ft.Container):
             now = datetime.now()
             j, m, a = f"{now.day:02d}", f"{now.month:02d}", f"{now.year}"
 
-        if hasattr(self.app, "data_dir") and self.app.data_dir:
-            base_dir = Path(self.app.data_dir) / "Documents_PDF"
-        else:
-            base_dir = Path(__file__).parent / "data" / "Documents_PDF"
-
-        folder_path = base_dir / type_doc.capitalize() / a / m
+        subfolder = Path("Documents_PDF") / type_doc.capitalize() / a / m
+        folder_path = self._get_writable_dir(subfolder)
 
         try:
-            folder_path.mkdir(parents=True, exist_ok=True)
             file_name = f"{doc.get('numero', 'SANS_NUMERO')}.pdf"
             full_path = folder_path / file_name
 
@@ -535,7 +588,7 @@ class FacturationView(ft.Container):
                 else:
                     self.show_snack(f"PDF généré : {file_name}")
             else:
-                self.show_snack("⚡ PDF enregistré dans le dossier de l'app")
+                self.show_snack(f"⚡ PDF enregistré : {file_name}")
         except Exception as ex:
             self.show_snack(f"Erreur création PDF : {ex}", is_error=True)
 
@@ -789,11 +842,14 @@ class FacturationView(ft.Container):
             )
         )
 
-        canvas_maker = NumberedCanvas
-        canvas_maker._entreprise_nom = ent_nom
-        canvas_maker._entreprise_siret = ent_siret
-        canvas_maker._entreprise_mentions = mentions_text
-        doc_pdf.build(story, canvasmaker=canvas_maker)
+        if NumberedCanvas:
+            canvas_maker = NumberedCanvas
+            canvas_maker._entreprise_nom = ent_nom
+            canvas_maker._entreprise_siret = ent_siret
+            canvas_maker._entreprise_mentions = mentions_text
+            doc_pdf.build(story, canvasmaker=canvas_maker)
+        else:
+            doc_pdf.build(story)
 
     def modifier_selectionne(self, e=None):
         type_doc, doc = self._selected_document()
@@ -827,10 +883,10 @@ class FacturationView(ft.Container):
 
             if confirme:
                 if type_doc == "devis":
-                    if hasattr(self.app, "devis") and doc in self.app.devis:
+                    if hasattr(self.app, "devis") and isinstance(self.app.devis, list) and doc in self.app.devis:
                         self.app.devis.remove(doc)
                 else:
-                    if hasattr(self.app, "factures") and doc in self.app.factures:
+                    if hasattr(self.app, "factures") and isinstance(self.app.factures, list) and doc in self.app.factures:
                         self.app.factures.remove(doc)
                 if hasattr(self.app, "save_data"):
                     self.app.save_data()
@@ -914,12 +970,7 @@ class FacturationView(ft.Container):
 
     def exporter_csv(self, e=None):
         try:
-            if hasattr(self.app, "data_dir") and self.app.data_dir:
-                export_dir = Path(self.app.data_dir) / "Exports"
-            else:
-                export_dir = Path.cwd() / "Exports"
-
-            export_dir.mkdir(parents=True, exist_ok=True)
+            export_dir = self._get_writable_dir("Exports")
             csv_path = export_dir / "historique_comptable.csv"
 
             with open(csv_path, mode="w", newline="", encoding="utf-8-sig") as f:
@@ -937,7 +988,7 @@ class FacturationView(ft.Container):
                             f_doc.get("total_ttc"),
                             f_doc.get("statut"),
                         ])
-            self.show_snack("CSV exporté dans Exports/historique_comptable.csv")
+            self.show_snack(f"CSV exporté dans : {csv_path.name}")
         except Exception as ex:
             self.show_snack(f"Erreur export CSV : {ex}", is_error=True)
 
