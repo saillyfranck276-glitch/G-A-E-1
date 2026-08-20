@@ -10,19 +10,9 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
 
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-
     steps:
       - name: Récupérer le code source
         uses: actions/checkout@v4
-
-      - name: Libérer de l'espace disque
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
-          sudo docker image prune --all --force || true
-          sudo apt-get clean
 
       - name: Configurer Java JDK 17
         uses: actions/setup-java@v4
@@ -41,37 +31,15 @@ jobs:
           flutter-version: "3.22.3"
           cache: true
 
-      - name: Dépendances système Linux
+      - name: Licences Android
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake swig pkg-config libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libwebp-dev libgtk-3-dev ninja-build
-
-      - name: Configuration d'Android SDK Platforms
-        run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
           flutter config --no-analytics
           yes | flutter doctor --android-licenses || true
 
-      - name: Convertir automatiquement Flet 0.21.2 et nettoyer les dépendances
-        run: |
-          # Passage à Flet 0.24.1
-          if [ -f "requirements.txt" ]; then sed -i 's/flet==0.21.2/flet==0.24.1/g' requirements.txt; fi
-          if [ -f "pyproject.toml" ]; then sed -i 's/flet==0.21.2/flet==0.24.1/g' pyproject.toml; fi
-          if [ -f "pyproject.toml" ]; then sed -i 's/flet>=0.21.2/flet==0.24.1/g' pyproject.toml; fi
-
-          # Remplacement de reportlab/fpdf2 par fpdf 1.7.2 (sans Pillow)
-          if [ -f "requirements.txt" ]; then sed -i 's/reportlab/fpdf==1.7.2/g' requirements.txt; fi
-          if [ -f "requirements.txt" ]; then sed -i 's/fpdf2/fpdf==1.7.2/g' requirements.txt; fi
-          if [ -f "requirements.txt" ]; then sed -i '/pillow/d' requirements.txt; fi
-
       - name: Installation des dépendances Python
         run: |
-          rm -rf PIL
           python -m pip install --upgrade pip setuptools wheel
-          pip install --upgrade "flet==0.24.1" "fpdf==1.7.2" pypdf
-          if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
-          if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then pip install -e . || pip install .; fi
+          pip install -r requirements.txt
 
       - name: Générer l'APK Android
         env:
@@ -79,7 +47,7 @@ jobs:
           FLUTTER_SUPPRESS_ANALYTICS: "true"
           PUB_DISABLE_ANALYTICS: "true"
         run: |
-          yes | flet build apk --verbose
+          flet build apk --verbose
 
       - name: Sauvegarder l'APK en artifact GitHub
         continue-on-error: true
