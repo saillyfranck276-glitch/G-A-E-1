@@ -47,15 +47,11 @@ jobs:
           flutter config --no-analytics
           yes | flutter doctor --android-licenses || true
 
-      - name: Convertir automatiquement Flet 0.21.2 en 0.24.1
+      - name: Nettoyage et installation des dépendances Python
         run: |
-          if [ -f "requirements.txt" ]; then sed -i 's/flet==0.21.2/flet==0.24.1/g' requirements.txt; fi
-          if [ -f "pyproject.toml" ]; then sed -i 's/flet==0.21.2/flet==0.24.1/g' pyproject.toml; fi
-          if [ -f "pyproject.toml" ]; then sed -i 's/flet>=0.21.2/flet>=0.24.1/g' pyproject.toml; fi
-
-      - name: Installation des dépendances Python
-        run: |
+          rm -rf PIL
           python -m pip install --upgrade pip setuptools wheel
+          pip install --upgrade "flet==0.24.1" fpdf2 pypdf
           if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
           if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then pip install -e . || pip install .; fi
 
