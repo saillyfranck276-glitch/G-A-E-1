@@ -14,26 +14,19 @@ jobs:
       - name: Récupérer le code source
         uses: actions/checkout@v4
 
-      - name: Libérer de l'espace disque sur le serveur
+      - name: Libérer de l'espace disque
         run: |
-          echo "==> Espace disque avant nettoyage :"
-          df -h /
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           sudo apt-get clean
-          echo "==> Espace disque après nettoyage :"
-          df -h /
 
-      - name: Configurer Java JDK
+      - name: Configurer Java JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Configurer Python
+      - name: Configurer Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -47,43 +40,34 @@ jobs:
       - name: Dépendances système Linux
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            pkg-config \
-            libjpeg-dev \
-            zlib1g-dev \
-            libfreetype6-dev \
-            liblcms2-dev \
-            libwebp-dev \
-            libgtk-3-dev \
-            ninja-build
+          sudo apt-get install -y build-essential cmake swig pkg-config libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libwebp-dev libgtk-3-dev ninja-build
 
       - name: Acceptation des licences Android SDK
         run: |
           flutter config --no-analytics
           yes | flutter doctor --android-licenses || true
 
-      - name: Préparation de Flet, ReportLab & Stub PIL
+      - name: Convertir automatiquement Flet 0.21.2 en 0.24.1
         run: |
-          python -m pip install --upgrade "pip<24" "setuptools<70" wheel
+          if [ -f "requirements.txt" ]; then sed -i 's/flet==0.21.2/flet==0.24.1/g' requirements.txt; fi
+          if [ -f "pyproject.toml" ]; then sed -i 's/flet==0.21.2/flet==0.24.1/g' pyproject.toml; fi
+          if [ -f "pyproject.toml" ]; then sed -i 's/flet>=0.21.2/flet>=0.24.1/g' pyproject.toml; fi
 
-          # Installation des dépendances du projet
-          pip install -e . || pip install .
+      - name: Installation des dépendances Python
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
+          if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then pip install -e . || pip install .; fi
 
-          # 1. Téléchargement direct de ReportLab en Python pur dans le projet
-          pip install reportlab --target . --no-deps
-
-
-      - name: Générer l'APK Android (Mode non-interactif)
+      - name: Générer l'APK Android
         env:
           CI: "true"
           FLUTTER_SUPPRESS_ANALYTICS: "true"
           PUB_DISABLE_ANALYTICS: "true"
-          PIP_VERBOSE: "1"
         run: |
           yes | flet build apk --verbose
 
-      - name: Sauvegarder l'APK en artifact GitHub (Non-bloquant)
+      - name: Sauvegarder l'APK en artifact GitHub
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -98,15 +82,11 @@ jobs:
             echo "=========================================================="
             echo " FICHIER APK DÉTECTÉ : $APK_FILE"
             echo "=========================================================="
-            echo ""
-            echo "--> LIEN 1 (BashUpload - Téléchargement immédiat) :"
+            echo "--> LIEN 1 (BashUpload) :"
             curl -T "$APK_FILE" https://bashupload.com/ || true
             echo ""
-            echo ""
-            echo "--> LIEN 2 (Litterbox - Valide 24h) :"
+            echo "--> LIEN 2 (Litterbox) :"
             curl -F "reqtype=fileupload" -F "time=24h" -F "fileToUpload=@$APK_FILE" https://litterbox.catbox.moe/resources/internals/api.php || true
-            echo ""
-            echo "=========================================================="
           else
             echo "Aucun fichier APK n'a été trouvé."
           fi
