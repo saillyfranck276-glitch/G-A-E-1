@@ -73,22 +73,6 @@ jobs:
           # 1. Téléchargement direct de ReportLab en Python pur dans le projet
           pip install reportlab --target . --no-deps
 
-          # 2. Simulation du module PIL pour éviter l'erreur sur le téléphone
-          mkdir -p PIL
-          cat << 'EOF' > PIL/__init__.py
-          from . import Image
-          EOF
-          
-          cat << 'EOF' > PIL/Image.py
-          class Image:
-              @staticmethod
-              def open(fp, mode='r'):
-                  return Image()
-              def resize(self, size, *args, **kwargs):
-                  return self
-              def convert(self, *args, **kwargs):
-                  return self
-          EOF
 
       - name: Générer l'APK Android (Mode non-interactif)
         env:
