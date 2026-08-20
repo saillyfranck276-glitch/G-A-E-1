@@ -35,18 +35,17 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Configuration de Flutter 3.24.3
+      - name: Configuration de Flutter SDK
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.24.3"
+          channel: "stable"
           cache: true
 
-      - name: Configuration Android SDK et Licences
+      - name: Préparation Android SDK & Licences
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev ninja-build
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"
           flutter config --android-sdk "$ANDROID_HOME"
           flutter config --no-analytics
           yes | flutter doctor --android-licenses || true
@@ -56,7 +55,7 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
 
-      - name: Nettoyer le cache Flet et supprimer les faux modules
+      - name: Purge du cache de build
         run: |
           rm -rf PIL build /tmp/flet_*
           flet clean || true
@@ -64,6 +63,7 @@ jobs:
       - name: Générer l'APK Android
         env:
           CI: "true"
+          FLUTTER_ROOT: ${{ env.FLUTTER_ROOT }}
           FLUTTER_SUPPRESS_ANALYTICS: "true"
           PUB_DISABLE_ANALYTICS: "true"
         run: |
